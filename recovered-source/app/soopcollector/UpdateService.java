@@ -32,7 +32,7 @@ import javax.swing.JProgressBar;
 import javax.swing.SwingUtilities;
 
 final class UpdateService {
-    static final String CURRENT_VERSION = "1.0.2";
+    static final String CURRENT_VERSION = "1.1.0";
     static final String RELEASES_URL = "https://api.github.com/repos/meildan332-lgtm/Kanashi-Collector/releases/latest";
     static final String INSTALLER_ASSET_NAME = "Kanashi-Collector-Setup.exe";
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10L)).followRedirects(HttpClient.Redirect.NORMAL).build();
@@ -41,7 +41,7 @@ final class UpdateService {
     }
 
     static void check(Component parent, boolean notifyWhenCurrent) {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_URL)).timeout(Duration.ofSeconds(15L)).header("Accept", "application/vnd.github+json").header("User-Agent", "Kanashi-Collector/1.0.2").GET().build();
+        HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASES_URL)).timeout(Duration.ofSeconds(15L)).header("Accept", "application/vnd.github+json").header("User-Agent", "Kanashi-Collector/1.1.0").GET().build();
         HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).whenComplete((response, failure) -> SwingUtilities.invokeLater(() -> {
             block6: {
                 if (failure != null || response == null || response.statusCode() != 200) {
@@ -156,7 +156,7 @@ final class UpdateService {
         CompletableFuture.runAsync(() -> {
             try {
                 Path temp = Files.createTempFile("Kanashi-Collector-Setup-", ".exe", new FileAttribute[0]);
-                HttpRequest request = HttpRequest.newBuilder(URI.create(release.downloadUrl())).timeout(Duration.ofMinutes(5L)).header("User-Agent", "Kanashi-Collector/1.0.2").GET().build();
+                HttpRequest request = HttpRequest.newBuilder(URI.create(release.downloadUrl())).timeout(Duration.ofMinutes(5L)).header("User-Agent", "Kanashi-Collector/1.1.0").GET().build();
                 Path partial = Path.of(temp.toString() + ".download", new String[0]);
                 HttpResponse<Path> response = HTTP.send(request, HttpResponse.BodyHandlers.ofFile(partial));
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {

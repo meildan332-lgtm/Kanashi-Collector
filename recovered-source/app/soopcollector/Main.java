@@ -83,6 +83,7 @@ import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
+import javax.swing.JPasswordField;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -98,6 +99,7 @@ import javax.swing.event.DocumentListener;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.table.DefaultTableModel;
 import zzik2.soop4j.SoopClient;
+import zzik2.soop4j.api.SoopLive;
 import zzik2.soop4j.chat.SoopChat;
 import zzik2.soop4j.chat.SoopChatAdapter;
 import zzik2.soop4j.chat.event.ChatEvent;
@@ -106,6 +108,10 @@ import zzik2.soop4j.chat.event.DonationEvent;
 import zzik2.soop4j.chat.event.DonationType;
 import zzik2.soop4j.chat.event.EnterChatRoomEvent;
 import zzik2.soop4j.chat.event.UnknownEvent;
+import zzik2.soop4j.constant.SoopUrls;
+import zzik2.soop4j.exception.AuthenticationRequiredException;
+import zzik2.soop4j.exception.StreamerOfflineException;
+import zzik2.soop4j.http.SoopHttpClient;
 
 public final class Main
 extends JFrame {
@@ -124,7 +130,8 @@ extends JFrame {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private State state = this.load();
     private final JTextField streamer = new JTextField();
-    private final JLabel status = new StatusLabel("\uc5f0\uacb0 \uc548 \ub428");
+    private final JLabel status = new StatusLabel("\u25cf  \uc624\ud504\ub77c\uc778");
+    private final JButton account = new JButton("\ub85c\uadf8\uc778");
     private final JButton connect = new JButton("\uc5f0\uacb0");
     private final DefaultTableModel roomModel = Main.model("\uc2dc\uac04", "\ud6c4\uc6d0 \uc885\ub958", "\ub2c9\ub124\uc784", "\uc544\uc774\ub514", "\ud6c4\uc6d0\uc218", "\uba54\uc2dc\uc9c0", "\uba54\ubaa8", "\ubc29\uc1a1\uad6d");
     private final DefaultTableModel reverseModel = Main.model("\uc2dc\uac04", "\ud6c4\uc6d0 \uc885\ub958", "\ub2c9\ub124\uc784", "\uc544\uc774\ub514", "\ud37c\uc13c\ud2b8", "\ud6c4\uc6d0\uc218", "\uba54\uc2dc\uc9c0", "\uacc4\uc0b0\uc218", "\ubc29\uc1a1\uad6d");
@@ -142,6 +149,7 @@ extends JFrame {
     private final LinkedHashSet<Long> claimedRoomDonations = new LinkedHashSet();
     private RouletteOverlay rouletteOverlay;
     private SoopChat chat;
+    private SoopSessionManager.Session session = SoopSessionManager.load();
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
@@ -151,7 +159,7 @@ extends JFrame {
     }
 
     private Main() {
-        super("\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.0.2");
+        super("\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.1.0");
         String[][] nav;
         this.setIconImages(Main.loadAppIcons());
         this.setDefaultCloseOperation(0);
@@ -256,11 +264,16 @@ extends JFrame {
         update.setFont(update.getFont().deriveFont(1, 19.0f));
         update.addActionListener(e -> UpdateService.check(this, true));
         controls.add(update);
+        this.refreshAccountButton();
+        this.account.putClientProperty("JButton.buttonType", "roundRect");
+        this.account.setToolTipText("SOOP \uacc4\uc815 \ub85c\uadf8\uc778, \ub85c\uadf8\uc544\uc6c3 \ub610\ub294 \uacc4\uc815 \ubcc0\uacbd");
+        this.account.addActionListener(e -> this.accountAction());
+        controls.add(this.account);
         this.status.setOpaque(false);
         this.status.setBackground(new Color(245, 239, 233));
         this.status.setForeground(MUTED);
         this.status.setBorder(new EmptyBorder(10, 18, 10, 18));
-        this.status.setText("\u25cb  \uc5f0\uacb0 \uc911");
+        this.status.setText("\u25cf  \uc624\ud504\ub77c\uc778");
         controls.add(this.status);
         p.add((Component)controls, "East");
         return p;
@@ -1323,27 +1336,100 @@ extends JFrame {
         if (this.chat != null) {
             this.disconnect();
         } else {
-            this.connect();
+            this.connect(false);
         }
     }
 
+    private void accountAction() {
+        if (this.session == null) {
+            this.showLoginDialog();
+            return;
+        }
+        Object[] options = {"\uacc4\uc815 \ubcc0\uacbd", "\ub85c\uadf8\uc544\uc6c3", "\ucde8\uc18c"};
+        int selected = JOptionPane.showOptionDialog(this,
+                this.session.userId() + " \uacc4\uc815\uc73c\ub85c \ub85c\uadf8\uc778\ub418\uc5b4 \uc788\uc2b5\ub2c8\ub2e4.",
+                "SOOP \uacc4\uc815", JOptionPane.DEFAULT_OPTION, JOptionPane.PLAIN_MESSAGE,
+                null, options, options[2]);
+        if (selected == 0) {
+            this.showLoginDialog();
+        } else if (selected == 1) {
+            this.disconnect();
+            SoopSessionManager.clear();
+            this.session = null;
+            this.refreshAccountButton();
+            this.connect(false);
+        }
+    }
+
+    private void showLoginDialog() {
+        JTextField userId = new JTextField(this.session == null ? "" : this.session.userId(), 22);
+        JPasswordField password = new JPasswordField(22);
+        JPanel panel = new JPanel(new GridLayout(0, 1, 0, 6));
+        panel.add(new JLabel("SOOP \uc544\uc774\ub514"));
+        panel.add(userId);
+        panel.add(new JLabel("\ube44\ubc00\ubc88\ud638 (\uc800\uc7a5\ud558\uc9c0 \uc54a\uc74c)"));
+        panel.add(password);
+        panel.add(new JLabel("\ub85c\uadf8\uc778 \uc138\uc158\ub9cc Windows \uc0ac\uc6a9\uc790 \uacc4\uc815\uc73c\ub85c \uc554\ud638\ud654\ud574 \uc800\uc7a5\ud569\ub2c8\ub2e4."));
+        if (JOptionPane.showConfirmDialog(this, panel, "SOOP \ub85c\uadf8\uc778",
+                JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return;
+        String id = userId.getText().trim();
+        char[] secret = password.getPassword();
+        password.setText("");
+        if (id.isBlank() || secret.length == 0) {
+            java.util.Arrays.fill(secret, '\0');
+            JOptionPane.showMessageDialog(this, "\uc544\uc774\ub514\uc640 \ube44\ubc00\ubc88\ud638\ub97c \uc785\ub825\ud574 \uc8fc\uc138\uc694.", "\ub85c\uadf8\uc778", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        this.account.setEnabled(false);
+        this.account.setText("\ub85c\uadf8\uc778 \uc911\u2026");
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return SoopSessionManager.login(id, secret);
+            } catch (Exception e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
+        }).whenComplete((signedIn, failure) -> Main.ui(() -> {
+            this.account.setEnabled(true);
+            if (failure != null) {
+                this.refreshAccountButton();
+                Throwable cause = rootCause(failure);
+                String detail = cause == null || cause.getMessage() == null ? "\ub85c\uadf8\uc778\ud558\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4." : cause.getMessage();
+                JOptionPane.showMessageDialog(this, detail, "SOOP \ub85c\uadf8\uc778 \uc2e4\ud328", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            this.disconnect();
+            this.session = signedIn;
+            this.refreshAccountButton();
+            this.connect(true);
+        }));
+    }
+
+    private void refreshAccountButton() {
+        this.account.setText(this.session == null ? "\ub85c\uadf8\uc778" : this.session.userId() + " \uacc4\uc815");
+    }
+
     private void connect() {
+        this.connect(false);
+    }
+
+    private void connect(boolean useSession) {
         String id = FIXED_STREAMER_ID;
-        this.status.setText("\u25cb  \uc5f0\uacb0 \uc911");
+        this.connectingStatus();
         this.state.streamerId = id;
         this.save();
         CompletableFuture.runAsync(() -> {
             try {
-                final SoopChat c = SoopClient.builder().build().chat(id).autoReconnect(true).build();
+                SoopSessionManager.Session currentSession = useSession ? this.session : null;
+                String cookieHeader = currentSession == null ? null : currentSession.cookieHeader();
+                SoopLive live = new SoopLive(new SoopHttpClient(), SoopUrls.LIVE_BASE_URL, cookieHeader);
+                final SoopChat c = SoopClient.builder().build().chat(id).liveApi(live).autoReconnect(true).build();
                 c.addListener(new SoopChatAdapter(){
 
                     @Override
                     public void onEnterChatRoom(EnterChatRoomEvent e) {
                         Main.ui(() -> {
                             Main.this.chat = c;
-                            Main.this.status.setText("\u25cf  \uc5f0\uacb0\ub428");
-                            Main.this.status.setForeground(new Color(29, 138, 78));
-                            Main.this.status.setBackground(new Color(226, 247, 235));
+                            Main.this.connectedStatus();
                         });
                     }
 
@@ -1371,20 +1457,24 @@ extends JFrame {
                         Main.ui(() -> {
                             if (Main.this.chat == c) {
                                 Main.this.chat = null;
-                                Main.this.offlineStatus("\uc5f0\uacb0 \uc548 \ub428");
+                                Main.this.offlineStatus();
                             }
                         });
                     }
 
                     @Override
                     public void onError(Exception e) {
-                        Main.ui(() -> Main.this.offlineStatus("\uc5f0\uacb0 \uc548 \ub428"));
+                        Main.ui(() -> Main.this.failureStatus(e));
                     }
                 });
                 c.connect();
             }
             catch (Exception ex) {
-                Main.ui(() -> this.offlineStatus("\uc5f0\uacb0 \uc548 \ub428"));
+                if (!useSession && this.session != null && rootCause(ex) instanceof AuthenticationRequiredException) {
+                    Main.ui(() -> this.connect(true));
+                    return;
+                }
+                Main.ui(() -> this.failureStatus(ex));
             }
         });
     }
@@ -1395,13 +1485,62 @@ extends JFrame {
         if (old != null) {
             old.disconnect();
         }
-        this.offlineStatus("\uc5f0\uacb0 \uc548 \ub428");
+        this.offlineStatus();
     }
 
-    private void offlineStatus(String text) {
-        this.status.setText("\u25cb  " + text);
-        this.status.setForeground(new Color(170, 73, 44));
+    private void connectingStatus() {
+        this.status.setText("\u25cb  \uc5f0\uacb0 \uc911");
+        this.status.setForeground(MUTED);
+        this.status.setBackground(new Color(245, 239, 233));
+        this.status.setToolTipText(null);
+    }
+
+    private void connectedStatus() {
+        this.status.setText("\u25cf  \uc5f0\ub3d9\ub428");
+        this.status.setForeground(new Color(29, 138, 78));
+        this.status.setBackground(new Color(226, 247, 235));
+        this.status.setToolTipText(this.session == null ? "\ube44\ub85c\uadf8\uc778 \uc5f0\uacb0" : this.session.userId() + " \uacc4\uc815\uc73c\ub85c \uc5f0\uacb0");
+    }
+
+    private void offlineStatus() {
+        this.status.setText("\u25cf  \uc624\ud504\ub77c\uc778");
+        this.status.setForeground(new Color(112, 112, 112));
+        this.status.setBackground(new Color(238, 238, 238));
+        this.status.setToolTipText("\ubc29\uc1a1\uc774 \uc624\ud504\ub77c\uc778\uc774\uac70\ub098 \uc5f0\uacb0\uc744 \ub04a\uc5c8\uc2b5\ub2c8\ub2e4.");
+    }
+
+    private void failureStatus(Throwable error) {
+        Throwable cause = rootCause(error);
+        if (cause instanceof StreamerOfflineException) {
+            this.offlineStatus();
+            return;
+        }
+        if (cause instanceof AuthenticationRequiredException) {
+            AuthenticationRequiredException auth = (AuthenticationRequiredException)cause;
+            this.status.setText("\u25cf  \uc5f0\ub3d9\uc2e4\ud328 \u00b7 \ub85c\uadf8\uc778 \ud544\uc694");
+            this.status.setForeground(new Color(190, 104, 0));
+            this.status.setBackground(new Color(255, 241, 214));
+            this.status.setToolTipText(auth.getReason().isBlank()
+                    ? "\uc131\uc778 \uc778\uc99d \ub610\ub294 \uad6c\ub3c5 \uad8c\ud55c\uc774 \uc788\ub294 SOOP \uacc4\uc815\uc73c\ub85c \ub85c\uadf8\uc778\ud558\uc138\uc694."
+                    : auth.getReason());
+            if (this.session != null) {
+                this.account.setText("\uc7ac\ub85c\uadf8\uc778");
+            }
+            return;
+        }
+        String message = cause == null || cause.getMessage() == null ? "\uc54c \uc218 \uc5c6\ub294 \uc624\ub958" : cause.getMessage();
+        boolean network = message.contains("HTTP") || message.contains("timeout") || message.contains("\uc2dc\uac04 \ucd08\uacfc")
+                || message.contains("connect") || message.contains("\uc5f0\uacb0");
+        this.status.setText("\u25cf  \uc5f0\ub3d9\uc2e4\ud328 \u00b7 " + (network ? "\ub124\ud2b8\uc6cc\ud06c \uc624\ub958" : "\uc11c\ubc84 \uc624\ub958"));
+        this.status.setForeground(new Color(176, 62, 38));
         this.status.setBackground(new Color(255, 235, 226));
+        this.status.setToolTipText(message);
+    }
+
+    private static Throwable rootCause(Throwable error) {
+        Throwable current = error;
+        while (current != null && current.getCause() != null && current.getCause() != current) current = current.getCause();
+        return current;
     }
 
     private void donation(String source, String id, String nick, int amount) {
