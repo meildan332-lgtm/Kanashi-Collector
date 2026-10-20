@@ -10,6 +10,7 @@ public final class SecuritySmokeTest {
         testAuthenticationClassification();
         testSessionRedaction();
         testDpapiRoundTrip();
+        testChatViewerClassification();
         System.out.println("SecuritySmokeTest: OK");
     }
 
@@ -37,6 +38,17 @@ public final class SecuritySmokeTest {
         byte[] decrypted = (byte[])method.invoke(null, encrypted, false);
         require(java.util.Arrays.equals(plain, decrypted), "DPAPI round-trip failed");
         require(!java.util.Arrays.equals(plain, encrypted), "DPAPI did not encrypt the payload");
+    }
+
+    private static void testChatViewerClassification() {
+        require(Main.classifyChatViewer("16|0", "-1") == Main.ChatViewerType.NORMAL,
+                "guest chat must be classified as normal");
+        require(Main.classifyChatViewer("32|0", "-1") == Main.ChatViewerType.FAN,
+                "fan-club chat must be classified as fan");
+        require(Main.classifyChatViewer("32|0", "3") == Main.ChatViewerType.SUBSCRIBER,
+                "subscriber must take priority over fan-club status");
+        require(Main.classifyChatViewer("32800|0", "12") == Main.ChatViewerType.TOP_FAN,
+                "top fan must take priority over other chat statuses");
     }
 
     private static void require(boolean condition, String message) {

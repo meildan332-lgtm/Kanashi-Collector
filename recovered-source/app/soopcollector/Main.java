@@ -69,6 +69,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.IntConsumer;
+import java.util.function.Supplier;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -107,6 +108,7 @@ import zzik2.soop4j.chat.event.DisconnectEvent;
 import zzik2.soop4j.chat.event.DonationEvent;
 import zzik2.soop4j.chat.event.DonationType;
 import zzik2.soop4j.chat.event.EnterChatRoomEvent;
+import zzik2.soop4j.chat.event.RawEvent;
 import zzik2.soop4j.chat.event.UnknownEvent;
 import zzik2.soop4j.constant.SoopUrls;
 import zzik2.soop4j.exception.AuthenticationRequiredException;
@@ -116,6 +118,7 @@ import zzik2.soop4j.http.SoopHttpClient;
 public final class Main
 extends JFrame {
     private static final String FIXED_STREAMER_ID = "kjhh0029";
+    private static final boolean TEST_MODE = Boolean.getBoolean("kanashi.testMode");
     private static final String GOOGLE_SHEETS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw5aF5IHW4hWYwmXlPCWOt_28kS-Ku5R-x9QucTTJ2ObK4-E6rMd2oK1mL8DkP3rUxY/exec";
     private static final String GOOGLE_SHEETS_ACCESS_KEY = "kanashi-kk1231567-2026";
     private static final Color BG = new Color(255, 248, 242);
@@ -126,7 +129,7 @@ extends JFrame {
     private static final Color TEXT = new Color(52, 42, 37);
     private static final Color MUTED = new Color(139, 119, 108);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
-    private static final Path DATA = Paths.get(System.getProperty("user.home"), ".soop-collector", "data.json");
+    private static final Path DATA = Paths.get(System.getProperty("user.home"), ".soop-collector", TEST_MODE ? "data-test.json" : "data.json");
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private State state = this.load();
     private final JTextField streamer = new JTextField();
@@ -145,9 +148,11 @@ extends JFrame {
     private final JTextField reverseSearch = new JTextField();
     private final JTextField pinSearch = new JTextField();
     private final Map<String, List<Pending>> pending = new HashMap<String, List<Pending>>();
+    private final LinkedHashMap<String, ChatViewerType> chatViewerTypes = new LinkedHashMap<String, ChatViewerType>();
     private final AtomicLong donationSequence = new AtomicLong();
     private final LinkedHashSet<Long> claimedRoomDonations = new LinkedHashSet();
     private RouletteOverlay rouletteOverlay;
+    private JComponent nashiBallPanel;
     private SoopChat chat;
     private SoopSessionManager.Session session = SoopSessionManager.load();
 
@@ -159,7 +164,7 @@ extends JFrame {
     }
 
     private Main() {
-        super("\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.1.0");
+        super(TEST_MODE ? "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 \u00b7 \ud14c\uc2a4\ud2b8" : "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.2.0");
         String[][] nav;
         this.setIconImages(Main.loadAppIcons());
         this.setDefaultCloseOperation(0);
@@ -176,11 +181,13 @@ extends JFrame {
         cards.add((Component)this.roomTab(), "room");
         cards.add((Component)this.reverseTab(), "reverse");
         cards.add((Component)this.pinballTab(), "pin");
+        cards.add((Component)this.nashiBallTab(), "nashiball");
         JPanel navigation = new JPanel(new FlowLayout(0, 8, 6));
         navigation.setOpaque(false);
         navigation.setBorder(new EmptyBorder(5, 22, 3, 22));
         ButtonGroup group = new ButtonGroup();
-        for (String[] item : nav = new String[][]{{"\ubc29\uc140", "room"}, {"\uc5ed\ud32c", "reverse"}, {"\ud540\ubcfc", "pin"}}) {
+        nav = new String[][]{{"\ubc29\uc140", "room"}, {"\uc5ed\ud32c", "reverse"}, {"\uacf5 \uc218\uc9d1", "pin"}, {"\ub098\uc2dc\ubcfc", "nashiball"}};
+        for (String[] item : nav) {
             JToggleButton button = new JToggleButton(item[0]);
             button.putClientProperty("JButton.buttonType", "roundRect");
             button.setPreferredSize(new Dimension(96, 40));
@@ -200,12 +207,14 @@ extends JFrame {
         this.restoreTables();
         this.refreshCollectionLists();
         Main.styleControls(this.getContentPane());
-        Timer autoConnect = new Timer(350, e -> this.connect());
-        autoConnect.setRepeats(false);
-        autoConnect.start();
-        Timer updateCheck = new Timer(2200, e -> UpdateService.check(this, false));
-        updateCheck.setRepeats(false);
-        updateCheck.start();
+        if (!TEST_MODE) {
+            Timer autoConnect = new Timer(350, e -> this.connect());
+            autoConnect.setRepeats(false);
+            autoConnect.start();
+            Timer updateCheck = new Timer(2200, e -> UpdateService.check(this, false));
+            updateCheck.setRepeats(false);
+            updateCheck.start();
+        }
         this.addWindowListener(new WindowAdapter(){
 
             @Override
@@ -213,6 +222,12 @@ extends JFrame {
                 Main.this.disconnect();
                 if (Main.this.rouletteOverlay != null) {
                     Main.this.rouletteOverlay.close();
+                }
+                if (Main.this.nashiBallPanel instanceof AutoCloseable) {
+                    try {
+                        ((AutoCloseable)Main.this.nashiBallPanel).close();
+                    } catch (Exception ignored) {
+                    }
                 }
                 Main.this.save();
                 Main.this.dispose();
@@ -246,24 +261,36 @@ extends JFrame {
         JPanel versionWrap = new JPanel();
         versionWrap.setOpaque(false);
         versionWrap.setLayout(new BoxLayout(versionWrap, 1));
-        JLabel version = new JLabel("Kanashi Collector v" + UpdateService.CURRENT_VERSION);
+        JLabel version = new JLabel(TEST_MODE ? "Kanashi Collector TEST" : "Kanashi Collector v" + UpdateService.CURRENT_VERSION);
         version.setForeground(TEXT);
         version.setFont(version.getFont().deriveFont(1, 12.0f));
-        JLabel updateHint = new JLabel("\uc2e4\ud589 \uc2dc \uc5c5\ub370\uc774\ud2b8 \uc790\ub3d9 \ud655\uc778");
+        JLabel updateHint = new JLabel(TEST_MODE ? "\uc790\ub3d9 \uc5c5\ub370\uc774\ud2b8 \uaebc\uc9d0" : "\uc2e4\ud589 \uc2dc \uc5c5\ub370\uc774\ud2b8 \uc790\ub3d9 \ud655\uc778");
         updateHint.setForeground(MUTED);
         updateHint.setFont(updateHint.getFont().deriveFont(11.0f));
         versionWrap.add(version);
         versionWrap.add(Box.createVerticalStrut(2));
         versionWrap.add(updateHint);
         controls.add(versionWrap);
-        JButton update = new JButton("\u21bb");
-        update.setToolTipText("\ucd5c\uc2e0 \ubc84\uc804 \ud655\uc778");
-        update.getAccessibleContext().setAccessibleName("\ucd5c\uc2e0 \ubc84\uc804 \ud655\uc778");
-        update.putClientProperty("JButton.buttonType", "roundRect");
-        update.setPreferredSize(new Dimension(38, 38));
-        update.setFont(update.getFont().deriveFont(1, 19.0f));
-        update.addActionListener(e -> UpdateService.check(this, true));
-        controls.add(update);
+        if (!TEST_MODE) {
+            JButton update = new JButton("\u21bb");
+            update.setToolTipText("\ucd5c\uc2e0 \ubc84\uc804 \ud655\uc778");
+            update.getAccessibleContext().setAccessibleName("\ucd5c\uc2e0 \ubc84\uc804 \ud655\uc778");
+            update.putClientProperty("JButton.buttonType", "roundRect");
+            update.setPreferredSize(new Dimension(38, 38));
+            update.setFont(update.getFont().deriveFont(1, 19.0f));
+            update.addActionListener(e -> UpdateService.check(this, true));
+            controls.add(update);
+        } else {
+            this.streamer.setText(this.state.streamerId == null ? "" : this.state.streamerId);
+            this.streamer.putClientProperty("JTextField.placeholderText", "\uc2a4\ud2b8\ub9ac\uba38 ID");
+            this.streamer.setPreferredSize(new Dimension(150, 38));
+            this.streamer.addActionListener(e -> this.connect(false));
+            this.connect.setText("\uc5f0\uacb0");
+            this.connect.setPreferredSize(new Dimension(66, 38));
+            this.connect.addActionListener(e -> this.connect(false));
+            controls.add(this.streamer);
+            controls.add(this.connect);
+        }
         this.refreshAccountButton();
         this.account.putClientProperty("JButton.buttonType", "roundRect");
         this.account.setToolTipText("SOOP \uacc4\uc815 \ub85c\uadf8\uc778, \ub85c\uadf8\uc544\uc6c3 \ub610\ub294 \uacc4\uc815 \ubcc0\uacbd");
@@ -724,10 +751,14 @@ extends JFrame {
 
     private JComponent pinballTab() {
         JPanel top = Main.settingsCard("\ud540\ubcfc \uc124\uc815", "\uae30\uc900 \uc218\ub7c9\ub9c8\ub2e4 \uacf5\uc744 \ud558\ub098\uc529 \uacc4\uc0b0\ud574\uc694");
+        JPanel donationSettings = new JPanel();
+        donationSettings.setOpaque(false);
+        donationSettings.setLayout(new BoxLayout(donationSettings, BoxLayout.Y_AXIS));
+        donationSettings.setAlignmentX(0.0f);
         JTextField unit = Main.smallField();
-        top.add(Main.section("\uc218\uc9d1\ud560 \ud6c4\uc6d0"));
-        this.addSourceSelectors(top, "pin");
-        top.add(Box.createVerticalStrut(14));
+        donationSettings.add(Main.section("\uc218\uc9d1\ud560 \ud6c4\uc6d0"));
+        this.addSourceSelectors(donationSettings, "pin");
+        donationSettings.add(Box.createVerticalStrut(14));
         unit.setText(this.state.pinballUnit > 0 ? String.valueOf(this.state.pinballUnit) : "");
         JLabel current = new JLabel(this.pinText());
         JButton saveRule = new JButton("\uaddc\uce59 \uc800\uc7a5");
@@ -739,11 +770,75 @@ extends JFrame {
         GradientButton copyAll = new GradientButton("\uc218\uc9d1\ud55c \uacf5 \uc804\uccb4 \ubcf5\uc0ac");
         copyAll.setPreferredSize(new Dimension(210, 54));
         copyAll.addActionListener(e -> this.copyBallSummary());
-        top.add(Main.section("\uacf5 1\uac1c\uc758 \uae30\uc900 \uc218\ub7c9"));
-        top.add(Main.fieldRow(unit, saveRule));
-        top.add(Box.createVerticalStrut(12));
+        donationSettings.add(Main.section("\uacf5 1\uac1c\uc758 \uae30\uc900 \uc218\ub7c9"));
+        donationSettings.add(Main.fieldRow(unit, saveRule));
+        donationSettings.add(Box.createVerticalStrut(12));
         current.setForeground(ACCENT_DARK);
-        top.add(current);
+        current.setAlignmentX(0.0f);
+        current.setMaximumSize(new Dimension(Integer.MAX_VALUE, current.getPreferredSize().height));
+        donationSettings.add(current);
+
+        JPanel chatSettings = new JPanel();
+        chatSettings.setOpaque(false);
+        chatSettings.setLayout(new BoxLayout(chatSettings, BoxLayout.Y_AXIS));
+        chatSettings.setAlignmentX(0.0f);
+        JToggleButton collectChat = new JToggleButton(this.state.pinChatEnabled ? "\uc77c\ubc18 \ucc44\ud305 \uc218\uc9d1 ON" : "\uc77c\ubc18 \ucc44\ud305 \uc218\uc9d1 OFF");
+        collectChat.setSelected(this.state.pinChatEnabled);
+        collectChat.setAlignmentX(0.0f);
+        collectChat.setPreferredSize(new Dimension(170, 38));
+        collectChat.setMaximumSize(new Dimension(170, 38));
+        ToggleSwitch duplicateChat = new ToggleSwitch("\uc911\ubcf5 \uc218\uc9d1");
+        duplicateChat.setSelected(this.state.pinChatDuplicateEnabled);
+        duplicateChat.setEnabled(this.state.pinChatEnabled);
+        duplicateChat.addActionListener(e -> {
+            this.state.pinChatDuplicateEnabled = duplicateChat.isSelected();
+            this.save();
+        });
+        collectChat.addActionListener(e -> {
+            this.state.pinChatEnabled = collectChat.isSelected();
+            collectChat.setText(this.state.pinChatEnabled ? "\uc77c\ubc18 \ucc44\ud305 \uc218\uc9d1 ON" : "\uc77c\ubc18 \ucc44\ud305 \uc218\uc9d1 OFF");
+            duplicateChat.setEnabled(this.state.pinChatEnabled);
+            this.save();
+        });
+        chatSettings.add(Main.section("\uc77c\ubc18 \ucc44\ud305 \uc218\uc9d1"));
+        chatSettings.add(collectChat);
+        chatSettings.add(Box.createVerticalStrut(18));
+        chatSettings.add(Main.section("\uc218\uc9d1\ud560 \ucc44\ud305"));
+        this.addChatViewerSelectors(chatSettings);
+        chatSettings.add(Box.createVerticalStrut(14));
+        JPanel duplicateRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        duplicateRow.setOpaque(false);
+        duplicateRow.setAlignmentX(0.0f);
+        duplicateRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        JLabel duplicateLabel = new JLabel("\uc911\ubcf5 \uc218\uc9d1");
+        duplicateLabel.setForeground(TEXT);
+        duplicateRow.add(duplicateLabel);
+        duplicateRow.add(duplicateChat);
+        chatSettings.add(duplicateRow);
+
+        CardLayout settingsLayout = new CardLayout();
+        JPanel settingsCards = new JPanel(settingsLayout);
+        settingsCards.setOpaque(false);
+        settingsCards.setAlignmentX(0.0f);
+        settingsCards.add(donationSettings, "donation");
+        settingsCards.add(chatSettings, "chat");
+        JPanel settingsTabs = new JPanel(new GridLayout(1, 2, 8, 0));
+        settingsTabs.setOpaque(false);
+        settingsTabs.setAlignmentX(0.0f);
+        settingsTabs.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        JToggleButton donationTab = new JToggleButton("\ud6c4\uc6d0");
+        JToggleButton chatTab = new JToggleButton("\uc77c\ubc18 \ucc44\ud305");
+        ButtonGroup settingsGroup = new ButtonGroup();
+        settingsGroup.add(donationTab);
+        settingsGroup.add(chatTab);
+        donationTab.setSelected(true);
+        donationTab.addActionListener(e -> settingsLayout.show(settingsCards, "donation"));
+        chatTab.addActionListener(e -> settingsLayout.show(settingsCards, "chat"));
+        settingsTabs.add(donationTab);
+        settingsTabs.add(chatTab);
+        top.add(settingsTabs);
+        top.add(Box.createVerticalStrut(16));
+        top.add(settingsCards);
         this.ballSummary.setLayout(new BoxLayout(this.ballSummary, 1));
         this.ballSummary.setOpaque(false);
         this.refreshBallSummary();
@@ -752,6 +847,33 @@ extends JFrame {
         bottom.add((Component)this.ballSummary, "Center");
         bottom.add((Component)copyAll, "East");
         return Main.dashboard(top, this.collectionArea(this.pinList, "pin"), bottom);
+    }
+
+    private JComponent nashiBallTab() {
+        try {
+            Class<?> panelClass = Class.forName("app.soopcollector.NashiBallBrowserPanel");
+            Supplier<String> entries = this::nashiBallEntries;
+            this.nashiBallPanel = (JComponent)panelClass.getConstructor(Supplier.class).newInstance(entries);
+            return this.nashiBallPanel;
+        } catch (ReflectiveOperationException ex) {
+            JPanel unavailable = Main.page();
+            JLabel message = new JLabel("\ub098\uc2dc\ubcfc \ubaa8\ub4c8\uc744 \ubd88\ub7ec\uc624\uc9c0 \ubabb\ud588\uc2b5\ub2c8\ub2e4.", 0);
+            message.setForeground(MUTED);
+            unavailable.add(message, BorderLayout.CENTER);
+            return unavailable;
+        }
+    }
+
+    private String nashiBallEntries() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            CompletableFuture<String> result = new CompletableFuture<String>();
+            SwingUtilities.invokeLater(() -> result.complete(this.nashiBallEntries()));
+            return result.join();
+        }
+        return this.state.gameBalls.entrySet().stream()
+                .filter(e -> e.getValue() != null && e.getValue() > 0)
+                .map(e -> e.getKey() + "*" + e.getValue())
+                .reduce((a, b) -> a + "\n" + b).orElse("");
     }
 
     private JComponent tableArea(JTable table, boolean actions) {
@@ -807,7 +929,7 @@ extends JFrame {
         JLabel eyebrow = new JLabel("LIVE COLLECTION");
         eyebrow.setForeground(ACCENT);
         eyebrow.setFont(eyebrow.getFont().deriveFont(1, 10.0f));
-        JLabel title = new JLabel("\uc218\uc9d1\ub41c \ud6c4\uc6d0 \ubaa9\ub85d");
+        JLabel title = new JLabel(type.equals("pin") ? "\uc218\uc9d1\ub41c \ud540\ubcfc \ubaa9\ub85d" : "\uc218\uc9d1\ub41c \ud6c4\uc6d0 \ubaa9\ub85d");
         title.setFont(title.getFont().deriveFont(1, 20.0f));
         JTextField search = this.searchField(type);
         words.add(eyebrow);
@@ -962,13 +1084,14 @@ extends JFrame {
             this.renderPinListRow(i, index, r);
         }
         if (!shown) {
-            Main.addListPlaceholder(this.pinList, this.state.pinRows.isEmpty() ? "\uc544\uc9c1 \uc218\uc9d1\ub41c \ud6c4\uc6d0\uc774 \uc5c6\uc5b4\uc694" : "\uac80\uc0c9 \uacb0\uacfc\uac00 \uc5c6\uc5b4\uc694");
+            Main.addListPlaceholder(this.pinList, this.state.pinRows.isEmpty() ? "\uc544\uc9c1 \uc218\uc9d1\ub41c \ud6c4\uc6d0\uc774\ub098 \ucc44\ud305\uc774 \uc5c6\uc5b4\uc694" : "\uac80\uc0c9 \uacb0\uacfc\uac00 \uc5c6\uc5b4\uc694");
         }
         Main.finishList(this.pinList);
     }
 
     private void renderPinListRow(int i, int index, PinRow r) {
-        this.pinList.add(this.entryRow(i + 1, Main.safe(r.game), r.nick + " \u00b7 " + r.id, r.source + " \u00b7 \ud6c4\uc6d0 " + r.amount + "\uac1c", r.balls + "\uacf5", r.id, null, () -> this.deleteEntry("pin", index), true));
+        String detail = r.amount > 0 ? r.source + " \u00b7 \ud6c4\uc6d0 " + r.amount + "\uac1c" : r.source;
+        this.pinList.add(this.entryRow(i + 1, Main.safe(r.game), Main.safe(r.nick) + " \u00b7 " + r.id, detail, r.balls + "\uacf5", r.id, null, () -> this.deleteEntry("pin", index), true));
     }
 
     private JComponent donorEntryRow(String nick, String id, String message, String donationInfo, Consumer<String> messageUpdate, String stationId, Runnable remove) {
@@ -1413,7 +1536,12 @@ extends JFrame {
     }
 
     private void connect(boolean useSession) {
-        String id = FIXED_STREAMER_ID;
+        String id = TEST_MODE ? this.streamer.getText().trim() : FIXED_STREAMER_ID;
+        if (id.isBlank()) {
+            this.error("\uc2a4\ud2b8\ub9ac\uba38 ID\ub97c \uc785\ub825\ud558\uc138\uc694.");
+            return;
+        }
+        this.disconnect();
         this.connectingStatus();
         this.state.streamerId = id;
         this.save();
@@ -1422,6 +1550,9 @@ extends JFrame {
                 SoopSessionManager.Session currentSession = useSession ? this.session : null;
                 String cookieHeader = currentSession == null ? null : currentSession.cookieHeader();
                 SoopLive live = new SoopLive(new SoopHttpClient(), SoopUrls.LIVE_BASE_URL, cookieHeader);
+                if (TEST_MODE && !live.isOnline(id)) {
+                    throw new StreamerOfflineException(id);
+                }
                 final SoopChat c = SoopClient.builder().build().chat(id).liveApi(live).autoReconnect(true).build();
                 c.addListener(new SoopChatAdapter(){
 
@@ -1440,8 +1571,14 @@ extends JFrame {
                     }
 
                     @Override
+                    public void onRaw(RawEvent e) {
+                        Main.this.rememberChatViewerType(e);
+                    }
+
+                    @Override
                     public void onChat(ChatEvent e) {
-                        Main.ui(() -> Main.this.nextChat(e.getUserId(), e.getMessage()));
+                        ChatViewerType viewerType = Main.this.chatViewerType(e.getUserId());
+                        Main.ui(() -> Main.this.chatMessage(e.getUserId(), e.getUsername(), e.getMessage(), viewerType));
                     }
 
                     @Override
@@ -1489,6 +1626,7 @@ extends JFrame {
     }
 
     private void connectingStatus() {
+        this.connect.setEnabled(false);
         this.status.setText("\u25cb  \uc5f0\uacb0 \uc911");
         this.status.setForeground(MUTED);
         this.status.setBackground(new Color(245, 239, 233));
@@ -1496,6 +1634,7 @@ extends JFrame {
     }
 
     private void connectedStatus() {
+        this.connect.setEnabled(true);
         this.status.setText("\u25cf  \uc5f0\ub3d9\ub428");
         this.status.setForeground(new Color(29, 138, 78));
         this.status.setBackground(new Color(226, 247, 235));
@@ -1503,6 +1642,7 @@ extends JFrame {
     }
 
     private void offlineStatus() {
+        this.connect.setEnabled(true);
         this.status.setText("\u25cf  \uc624\ud504\ub77c\uc778");
         this.status.setForeground(new Color(112, 112, 112));
         this.status.setBackground(new Color(238, 238, 238));
@@ -1510,6 +1650,7 @@ extends JFrame {
     }
 
     private void failureStatus(Throwable error) {
+        this.connect.setEnabled(true);
         Throwable cause = rootCause(error);
         if (cause instanceof StreamerOfflineException) {
             this.offlineStatus();
@@ -1672,11 +1813,72 @@ extends JFrame {
         return wins.entrySet().stream().map(entry -> (Integer)entry.getValue() > 1 ? (String)entry.getKey() + " \u00d7 " + entry.getValue() : (String)entry.getKey()).reduce((a, b) -> a + " / " + b).orElse("");
     }
 
-    private void nextChat(String id, String message) {
+    private synchronized void rememberChatViewerType(RawEvent event) {
+        try {
+            byte[] raw = event.getRawData();
+            if (raw == null) {
+                return;
+            }
+            String packet = new String(raw, StandardCharsets.UTF_8);
+            if (packet.length() < 14 || !"0005".equals(packet.substring(2, 6))) {
+                return;
+            }
+            String[] parts = packet.split("\\f", -1);
+            if (parts.length <= 8 || parts[2] == null || parts[2].isBlank()) {
+                return;
+            }
+            this.chatViewerTypes.put(parts[2], Main.classifyChatViewer(parts[7], parts[8]));
+            while (this.chatViewerTypes.size() > 5000) {
+                Iterator<String> oldest = this.chatViewerTypes.keySet().iterator();
+                oldest.next();
+                oldest.remove();
+            }
+        }
+        catch (Exception ignored) {
+        }
+    }
+
+    private synchronized ChatViewerType chatViewerType(String id) {
+        return this.chatViewerTypes.getOrDefault(id, ChatViewerType.NORMAL);
+    }
+
+    static ChatViewerType classifyChatViewer(String userFlag, String subscriptionMonth) {
+        long primary = 0L;
+        try {
+            String rawPrimary = userFlag == null ? "" : userFlag.split("\\|", -1)[0].trim();
+            primary = Long.parseLong(rawPrimary);
+        }
+        catch (Exception ignored) {
+        }
+        if ((primary & 32768L) != 0L) {
+            return ChatViewerType.TOP_FAN;
+        }
+        try {
+            if (subscriptionMonth != null && Integer.parseInt(subscriptionMonth.trim()) >= 0) {
+                return ChatViewerType.SUBSCRIBER;
+            }
+        }
+        catch (Exception ignored) {
+        }
+        if ((primary & 32L) != 0L) {
+            return ChatViewerType.FAN;
+        }
+        return ChatViewerType.NORMAL;
+    }
+
+    private void chatMessage(String id, String nickname, String message, ChatViewerType viewerType) {
+        boolean pinDonationCollected = this.nextChat(id, message);
+        if (this.state.pinChatEnabled && !pinDonationCollected && this.chatViewerTypeEnabled(viewerType)) {
+            this.collectPinChat(id, nickname, message);
+        }
+    }
+
+    private boolean nextChat(String id, String message) {
         List<Pending> items = this.pending.remove(id);
         if (items == null) {
-            return;
+            return false;
         }
+        boolean pinCollected = false;
         for (Pending p : items) {
             Object row;
             int i;
@@ -1715,6 +1917,7 @@ extends JFrame {
                 Main.replaceRow(this.reverseModel, i, ((ReverseRow)row).values());
                 continue;
             }
+            pinCollected = true;
             i = Main.indexById(this.state.pinRows, p.id);
             if (i < 0) {
                 row = new PinRow(p.time, p.source, p.nick, p.id, p.amount, message, p.balls);
@@ -1733,6 +1936,39 @@ extends JFrame {
             this.state.gameBalls.merge(message.isBlank() ? "\ubbf8\uc785\ub825" : message.trim(), p.balls, Integer::sum);
             this.refreshBallSummary();
         }
+        this.save();
+        this.refreshCollectionLists();
+        return pinCollected;
+    }
+
+    private void collectPinChat(String id, String nickname, String message) {
+        if (id == null || id.isBlank() || message == null || message.isBlank()) {
+            return;
+        }
+        String now = TIME.format(LocalDateTime.now());
+        String collectedName = nickname == null || nickname.isBlank() ? id : nickname.trim();
+        int index = Main.indexById(this.state.pinRows, id);
+        if (!this.state.pinChatDuplicateEnabled && index >= 0
+                && Main.messageParts(this.state.pinRows.get(index).source).contains("\uc77c\ubc18 \ucc44\ud305")) {
+            return;
+        }
+        if (index < 0) {
+            PinRow row = new PinRow(now, "\uc77c\ubc18 \ucc44\ud305", collectedName, id, 0, collectedName, 1);
+            this.state.pinRows.add(row);
+            this.pinModel.addRow(row.values());
+        } else {
+            PinRow row = this.state.pinRows.get(index);
+            row.time = now;
+            row.source = Main.mergeMessage(row.source, "\uc77c\ubc18 \ucc44\ud305");
+            if (nickname != null && !nickname.isBlank()) {
+                row.nick = nickname;
+            }
+            row.balls += 1;
+            row.game = Main.mergeMessage(row.game, collectedName);
+            Main.replaceRow(this.pinModel, index, row.values());
+        }
+        this.state.gameBalls.merge(collectedName, 1, Integer::sum);
+        this.refreshBallSummary();
         this.save();
         this.refreshCollectionLists();
     }
@@ -1871,6 +2107,42 @@ extends JFrame {
                 this.save();
             });
             panel.add(box);
+        }
+    }
+
+    private void addChatViewerSelectors(JPanel panel) {
+        String[] labels = new String[]{"\uac74\ube75", "\ud32c", "\uad6c\ub3c5\uc790", "\uc5f4\ud608"};
+        ChatViewerType[] types = ChatViewerType.values();
+        for (int i = 0; i < labels.length; ++i) {
+            ChatViewerType type = types[i];
+            JCheckBox box = new JCheckBox(labels[i], this.chatViewerTypeEnabled(type));
+            box.setOpaque(false);
+            box.setForeground(TEXT);
+            box.setAlignmentX(0.0f);
+            box.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+            box.addActionListener(e -> {
+                this.setChatViewerTypeEnabled(type, box.isSelected());
+                this.save();
+            });
+            panel.add(box);
+        }
+    }
+
+    private boolean chatViewerTypeEnabled(ChatViewerType type) {
+        return switch (type) {
+            case NORMAL -> this.state.pinChatNormal;
+            case FAN -> this.state.pinChatFan;
+            case SUBSCRIBER -> this.state.pinChatSubscriber;
+            case TOP_FAN -> this.state.pinChatTopFan;
+        };
+    }
+
+    private void setChatViewerTypeEnabled(ChatViewerType type, boolean enabled) {
+        switch (type) {
+            case NORMAL -> this.state.pinChatNormal = enabled;
+            case FAN -> this.state.pinChatFan = enabled;
+            case SUBSCRIBER -> this.state.pinChatSubscriber = enabled;
+            case TOP_FAN -> this.state.pinChatTopFan = enabled;
         }
     }
 
@@ -2160,6 +2432,9 @@ extends JFrame {
         tag.setAlignmentX(0.0f);
         h.setAlignmentX(0.0f);
         d.setAlignmentX(0.0f);
+        tag.setMaximumSize(new Dimension(Integer.MAX_VALUE, tag.getPreferredSize().height));
+        h.setMaximumSize(new Dimension(Integer.MAX_VALUE, h.getPreferredSize().height));
+        d.setMaximumSize(new Dimension(Integer.MAX_VALUE, d.getPreferredSize().height));
         p.add(tag);
         p.add(Box.createVerticalStrut(4));
         p.add(h);
@@ -2175,6 +2450,7 @@ extends JFrame {
         l.setFont(l.getFont().deriveFont(1, 13.0f));
         l.setBorder(new EmptyBorder(0, 0, 7, 0));
         l.setAlignmentX(0.0f);
+        l.setMaximumSize(new Dimension(Integer.MAX_VALUE, l.getPreferredSize().height));
         return l;
     }
 
@@ -2373,6 +2649,12 @@ extends JFrame {
         boolean pinStar = true;
         boolean pinAd = true;
         boolean pinChallenge = true;
+        boolean pinChatEnabled = false;
+        boolean pinChatDuplicateEnabled = false;
+        boolean pinChatNormal = true;
+        boolean pinChatFan = true;
+        boolean pinChatSubscriber = true;
+        boolean pinChatTopFan = true;
         boolean rouletteEnabled = false;
         int rouletteAmount = 0;
         int rouletteSpins = 1;
@@ -2493,6 +2775,45 @@ extends JFrame {
             x.setColor(new Color(255, 171, 108));
             x.setStroke(new BasicStroke(2.0f));
             x.drawRoundRect(left, top, size - 1, size - 1, 16, 16);
+            x.dispose();
+        }
+    }
+
+    static final class ToggleSwitch
+    extends JToggleButton {
+        ToggleSwitch(String accessibleName) {
+            this.setPreferredSize(new Dimension(68, 32));
+            this.setMinimumSize(new Dimension(68, 32));
+            this.setMaximumSize(new Dimension(68, 32));
+            this.setFocusPainted(false);
+            this.setBorderPainted(false);
+            this.setContentAreaFilled(false);
+            this.setToolTipText(accessibleName + " ON/OFF");
+            this.getAccessibleContext().setAccessibleName(accessibleName);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D x = (Graphics2D)g.create();
+            x.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            boolean on = this.isSelected();
+            Color track = on ? ACCENT : new Color(205, 198, 193);
+            if (!this.isEnabled()) {
+                track = on ? new Color(244, 177, 145) : new Color(226, 222, 219);
+            }
+            int height = this.getHeight();
+            int knob = height - 8;
+            int knobX = on ? this.getWidth() - knob - 4 : 4;
+            x.setColor(track);
+            x.fillRoundRect(0, 0, this.getWidth(), height, height, height);
+            x.setColor(Color.WHITE);
+            x.fillOval(knobX, 4, knob, knob);
+            x.setFont(this.getFont().deriveFont(Font.BOLD, 10.0f));
+            String stateText = on ? "ON" : "OFF";
+            int textX = on ? 10 : knob + 10;
+            int textY = (height - x.getFontMetrics().getHeight()) / 2 + x.getFontMetrics().getAscent();
+            x.setColor(Color.WHITE);
+            x.drawString(stateText, textX, textY);
             x.dispose();
         }
     }
@@ -2746,6 +3067,13 @@ extends JFrame {
     }
 
     record RouletteQueueResult(boolean queued, boolean collected) {
+    }
+
+    enum ChatViewerType {
+        NORMAL,
+        FAN,
+        SUBSCRIBER,
+        TOP_FAN
     }
 
     record Pending(String kind, String source, String time, String nick, String id, int amount, int balls, String item, long created, long donationToken, boolean skipMessage) {

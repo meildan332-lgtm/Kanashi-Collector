@@ -1,2 +1,4 @@
 /work/
 *.class
+/dist/*.zip
+/test-resources/

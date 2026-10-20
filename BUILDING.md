@@ -8,7 +8,7 @@
 
 컴파일에는 Java 17과 기존 `SOOP-Collector.jar`가 필요합니다. 수정한 클래스를 컴파일한 뒤 JAR의 `app/soopcollector` 경로에 갱신합니다.
 
-현재 버전은 저장소 루트의 `build.ps1`로 재현할 수 있습니다. 이 스크립트는 v1.0.2 포터블 ZIP을 기준으로 복원 소스와 인증 지원용 soop4j 패치를 Java 17로 컴파일하고, 보안 스모크 테스트를 실행한 뒤 `dist/Kanashi-Collector-v1.1.0-Portable.zip`을 생성합니다.
+현재 버전은 저장소 루트의 `build.ps1`로 재현할 수 있습니다. 이 스크립트는 v1.0.2 포터블 ZIP을 기준으로 복원 소스와 인증 지원용 soop4j 패치를 Java 17로 컴파일하고, Swing WebView 1.0.10을 Maven Central에서 받아 Edge WebView2 브릿지를 포함하며, 보안 스모크 테스트를 실행한 뒤 `dist/Kanashi-Collector-v1.2.0-Portable.zip`을 생성합니다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build.ps1

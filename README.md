@@ -2,6 +2,17 @@
 
 카나시 SOOP 후원 수집함 Windows 릴리스 및 자동 업데이트 저장소입니다.
 
+## v1.2.0
+
+- 기존 핀볼 탭을 `공 수집`으로 개편
+- 후원과 일반 채팅을 닉네임 기준으로 공 수집
+- 건빵·팬·구독자·열혈 채팅 유형 필터와 중복 수집 설정
+- Edge WebView2 기반 `나시볼` 탭 추가
+- 공 수집 결과를 나시볼에 즉시 불러오기
+- 기존 고정 스트리머 `kjhh0029` 자동 연결 유지
+
+Windows 11은 Edge WebView2 Runtime을 기본 포함합니다. 이전 Windows에서는 Microsoft Edge WebView2 Runtime이 필요합니다.
+
 ## v1.1.0
 
 - 일반 방송은 기존처럼 비로그인 우선 연결
@@ -20,6 +31,6 @@
 - 설치 시 바탕화면/시작 메뉴 바로가기 생성
 - 설치 완료 직후 앱 자동 실행
 
-`dist/Kanashi-Collector-v1.1.0-Portable.zip`은 설치 없이 압축을 풀어 바로 실행할 수 있는 포터블 버전입니다.
+GitHub Releases의 `Kanashi-Collector-v1.2.0-Portable.zip`은 설치 없이 압축을 풀어 바로 실행할 수 있는 포터블 버전입니다.
 
 수정 및 재빌드에 관한 내용은 [BUILDING.md](BUILDING.md)를 참고하세요.
