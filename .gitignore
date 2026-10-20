@@ -1,4 +1,5 @@
 /work/
 *.class
 /dist/*.zip
+/dist/Kanashi-Collector-Setup.exe
 /test-resources/
