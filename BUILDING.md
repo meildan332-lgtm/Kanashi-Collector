@@ -14,6 +14,12 @@
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
+자동 업데이트에 사용할 `Kanashi-Collector-Setup.exe`까지 생성하려면 다음과 같이 실행합니다. WiX 3.14.1 포터블 바이너리는 필요할 때 자동으로 다운로드됩니다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Installer
+```
+
 SOOP 로그인 비밀번호는 저장하지 않습니다. 로그인 성공 후 받은 쿠키는 `%USERPROFILE%\.soop-collector\session.dat`에 Windows DPAPI CurrentUser 범위로 암호화해 저장합니다. 이 파일은 빌드 입력이나 ZIP에 포함되지 않습니다.
 
 Windows 설치기는 `jpackage`와 WiX Toolset 3.14로 생성합니다. `installer/main.wxs`에는 설치 완료 직후 `Kanashi Collector.exe`를 실행하는 사용자 정의 동작이 포함되어 있습니다. 설치 옵션은 사용자별 설치, 바탕화면 바로가기, 시작 메뉴 바로가기이며 설치 경로 선택은 비활성화되어 있습니다.
