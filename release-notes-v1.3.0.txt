@@ -1,0 +1,27 @@
+카나시 수집함 v1.3.0
+
+주요 변경 사항
+
+- 공 수집 후원 규칙을 최대 5개까지 등록하고 목록에서 확인하거나 삭제할 수 있습니다.
+- 여러 규칙 중 등록 순서상 첫 번째로 일치하는 규칙을 공 계산 기준으로 사용합니다.
+- 후원 수집 ON/OFF와 공겜/켠왕 50개당 1공 계산 기능을 추가했습니다.
+- 수집된 공 항목과 최하단 게임별 공 개수를 직접 수정할 수 있습니다.
+- 일반 채팅 수집의 중복 설정과 건빵, 팬, 구독자, 열혈 필터를 지원합니다.
+- 시간 설정, 증감, 시작, 일시정지, 초기화를 지원하는 타이머 탭을 추가했습니다.
+- 현재 보고 있는 탭에 맞는 내장 설명서를 추가했습니다.
+- 방셀, 역팬, 후원 공, 일반 채팅 수집 조건의 자동 테스트를 보강했습니다.
+
+다운로드
+
+포터블 버전은 Kanashi-Collector-v1.3.0-Portable.zip의 압축을 푼 뒤 Kanashi Collector.exe를 실행하세요.
+설치 버전은 Kanashi-Collector-Setup.exe를 실행하세요.
+
+Windows 11에는 Edge WebView2 Runtime이 기본 포함됩니다. 이전 Windows에서는 WebView2 Runtime이 필요할 수 있습니다.
+
+파일 검증값
+
+Kanashi-Collector-v1.3.0-Portable.zip
+SHA-256: 44a91187cdecd5be32eb8122e9095c61848d2703fc296e69e57dd70466392a67
+
+Kanashi-Collector-Setup.exe
+SHA-256: e8195b76082a9ba42fbfbeaf6f9eff53c684871bcbfae525024a1543d0eb5fcd

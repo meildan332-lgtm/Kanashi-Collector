@@ -75,6 +75,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.DefaultListModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -82,15 +83,20 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
+import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPasswordField;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
+import javax.swing.ListSelectionModel;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.UIManager;
@@ -99,6 +105,10 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import zzik2.soop4j.SoopClient;
 import zzik2.soop4j.api.SoopLive;
 import zzik2.soop4j.chat.SoopChat;
@@ -153,6 +163,7 @@ extends JFrame {
     private final LinkedHashSet<Long> claimedRoomDonations = new LinkedHashSet();
     private RouletteOverlay rouletteOverlay;
     private JComponent nashiBallPanel;
+    private String currentTab = "room";
     private SoopChat chat;
     private SoopSessionManager.Session session = SoopSessionManager.load();
 
@@ -164,7 +175,7 @@ extends JFrame {
     }
 
     private Main() {
-        super(TEST_MODE ? "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 \u00b7 \ud14c\uc2a4\ud2b8" : "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.2.0");
+        super(TEST_MODE ? "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 \u00b7 \ud14c\uc2a4\ud2b8" : "\uce74\ub098\uc2dc \uc218\uc9d1\ud568 v1.3.0");
         String[][] nav;
         this.setIconImages(Main.loadAppIcons());
         this.setDefaultCloseOperation(0);
@@ -182,17 +193,21 @@ extends JFrame {
         cards.add((Component)this.reverseTab(), "reverse");
         cards.add((Component)this.pinballTab(), "pin");
         cards.add((Component)this.nashiBallTab(), "nashiball");
+        cards.add((Component)this.timerTab(), "timer");
         JPanel navigation = new JPanel(new FlowLayout(0, 8, 6));
         navigation.setOpaque(false);
         navigation.setBorder(new EmptyBorder(5, 22, 3, 22));
         ButtonGroup group = new ButtonGroup();
-        nav = new String[][]{{"\ubc29\uc140", "room"}, {"\uc5ed\ud32c", "reverse"}, {"\uacf5 \uc218\uc9d1", "pin"}, {"\ub098\uc2dc\ubcfc", "nashiball"}};
+        nav = new String[][]{{"\ubc29\uc140", "room"}, {"\uc5ed\ud32c", "reverse"}, {"\uacf5 \uc218\uc9d1", "pin"}, {"\ub098\uc2dc\ubcfc", "nashiball"}, {"\ud0c0\uc774\uba38", "timer"}};
         for (String[] item : nav) {
             JToggleButton button = new JToggleButton(item[0]);
             button.putClientProperty("JButton.buttonType", "roundRect");
             button.setPreferredSize(new Dimension(96, 40));
             button.setFont(button.getFont().deriveFont(1, 14.0f));
-            button.addActionListener(e -> cardLayout.show(cards, item[1]));
+            button.addActionListener(e -> {
+                this.currentTab = item[1];
+                cardLayout.show(cards, item[1]);
+            });
             group.add(button);
             navigation.add(button);
             if (!item[1].equals("room")) continue;
@@ -291,6 +306,10 @@ extends JFrame {
             controls.add(this.streamer);
             controls.add(this.connect);
         }
+        JButton guide = new JButton("\uc124\uba85\uc11c");
+        guide.setToolTipText("\ud604\uc7ac \ud0ed \uc0ac\uc6a9 \uc124\uba85\uc11c");
+        guide.addActionListener(e -> this.showGuide());
+        controls.add(guide);
         this.refreshAccountButton();
         this.account.putClientProperty("JButton.buttonType", "roundRect");
         this.account.setToolTipText("SOOP \uacc4\uc815 \ub85c\uadf8\uc778, \ub85c\uadf8\uc544\uc6c3 \ub610\ub294 \uacc4\uc815 \ubcc0\uacbd");
@@ -304,6 +323,128 @@ extends JFrame {
         controls.add(this.status);
         p.add((Component)controls, "East");
         return p;
+    }
+
+    private void showGuide() {
+        JTextArea text = new JTextArea(Main.guideText(this.currentTab));
+        text.setEditable(false);
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        text.setFont(new Font("Malgun Gothic", Font.PLAIN, 14));
+        text.setForeground(TEXT);
+        text.setBackground(Color.WHITE);
+        text.setBorder(new EmptyBorder(18, 20, 18, 20));
+        text.setCaretPosition(0);
+        JScrollPane scroll = new JScrollPane(text);
+        scroll.setBorder(null);
+        scroll.getVerticalScrollBar().setUnitIncrement(18);
+        JDialog dialog = new JDialog(this, Main.guideTitle(this.currentTab) + " \uc124\uba85\uc11c", true);
+        dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout());
+        dialog.add(scroll, BorderLayout.CENTER);
+        JButton close = new JButton("\ub2eb\uae30");
+        close.addActionListener(e -> dialog.dispose());
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 10));
+        footer.setBackground(new Color(255, 247, 240));
+        footer.add(close);
+        dialog.add(footer, BorderLayout.SOUTH);
+        dialog.setSize(700, 650);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    static String guideTitle(String tab) {
+        return switch (tab) {
+            case "reverse" -> "\uc5ed\ud32c";
+            case "pin" -> "\uacf5 \uc218\uc9d1";
+            case "nashiball" -> "\ub098\uc2dc\ubcfc";
+            case "timer" -> "\ud0c0\uc774\uba38";
+            default -> "\ubc29\uc140";
+        };
+    }
+
+    static String guideText(String tab) {
+        return switch (tab) {
+            case "reverse" -> """
+                    [\uc5ed\ud32c \uc124\uba85\uc11c]
+
+                    \ud6c4\uc6d0 \uc218\ub7c9\uc5d0 \ub530\ub77c \uc124\uc815\ud55c \ube44\uc728\uc744 \uacc4\uc0b0\ud558\ub294 \uae30\ub2a5\uc785\ub2c8\ub2e4.
+
+                    1. \uc218\uc9d1\ud560 \ud6c4\uc6d0 \uc885\ub958\ub97c \uc120\ud0dd\ud569\ub2c8\ub2e4.
+                    2. \ucd5c\uc18c \ud6c4\uc6d0 \uc218\ub7c9\uacfc \uacc4\uc0b0 \ube44\uc728\uc744 \uc785\ub825\ud569\ub2c8\ub2e4.
+                    3. \uaddc\uce59 \ucd94\uac00\ub97c \ub204\ub985\ub2c8\ub2e4.
+
+                    \uc5ec\ub7ec \uaddc\uce59\uc774 \ub9de\uc73c\uba74 \ucd5c\uc18c \uc218\ub7c9\uc774 \uac00\uc7a5 \ub192\uc740 \uaddc\uce59\uc744 \uc801\uc6a9\ud569\ub2c8\ub2e4.
+                    \uc608: 500\uac1c \uc774\uc0c1/20% \uaddc\uce59\uc5d0 600\uac1c \ud6c4\uc6d0 \u2192 120\uac1c \uacc4\uc0b0
+
+                    \ud6c4\uc6d0 \uc218\ub7c9\uacfc \uacc4\uc0b0 \uacb0\uacfc\ub294 \uc989\uc2dc \uc218\uc9d1\ub418\uba70, \ud6c4\uc6d0\uc790\uac00 \ub2e4\uc74c \ucc44\ud305\uc744 \uc785\ub825\ud558\uba74 \uba54\uc2dc\uc9c0\uac00 \ucd94\uac00\ub429\ub2c8\ub2e4.
+                    """;
+            case "pin" -> """
+                    [\uacf5 \uc218\uc9d1 \uc124\uba85\uc11c]
+
+                    \ud6c4\uc6d0 \ub610\ub294 \uc77c\ubc18 \ucc44\ud305\uc744 \ud540\ubcfc \uacf5\uc73c\ub85c \uc218\uc9d1\ud569\ub2c8\ub2e4.
+
+                    \u25a0 \ud6c4\uc6d0
+                    - \ud6c4\uc6d0 \uc218\uc9d1 ON \uc0c1\ud0dc\uc5d0\uc11c\ub9cc \uc791\ub3d9\ud569\ub2c8\ub2e4.
+                    - \uaddc\uce59\uc740 \ucd5c\ub300 5\uac1c\uae4c\uc9c0 \ub4f1\ub85d\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.
+                    - \ub4f1\ub85d \uc21c\uc11c\ub300\ub85c \ucc98\uc74c \uc77c\uce58\ud558\ub294 \uaddc\uce59 \ud558\ub098\ub9cc \uc801\uc6a9\ud569\ub2c8\ub2e4.
+                    - 1\ubc88 20, 2\ubc88 50\uc5d0 200\uac1c \ud6c4\uc6d0 \u2192 1\ubc88 \uae30\uc900 10\uacf5
+                    - \ud6c4\uc6d0\uc790\uac00 2\ubd84 \uc548\uc5d0 \ub2e4\uc74c \ucc44\ud305\uc73c\ub85c \uac8c\uc784\uba85\uc744 \uc785\ub825\ud558\uba74 \uc218\uc9d1\uc774 \ud655\uc815\ub429\ub2c8\ub2e4.
+
+                    \u25a0 \uc77c\ubc18 \ucc44\ud305
+                    - \uac74\ube75, \ud32c, \uad6c\ub3c5\uc790, \uc5f4\ud608 \uc911 \uccb4\ud06c\ud55c \uc720\ud615\ub9cc \uc218\uc9d1\ud569\ub2c8\ub2e4.
+                    - \uc911\ubcf5 OFF: \uac19\uc740 \uc544\uc774\ub514\ub294 1\uacf5\ub9cc \uc218\uc9d1
+                    - \uc911\ubcf5 ON: \ucc44\ud305\ud560 \ub54c\ub9c8\ub2e4 1\uacf5 \ucd94\uac00
+                    - \ud6c4\uc6d0 \ud6c4 \uac8c\uc784\uba85\uc73c\ub85c \uc785\ub825\ud55c \ucc44\ud305\uc740 \uc774\uc911 \uc218\uc9d1\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.
+
+                    \u25a0 \uacf5\uac9c/\ucf20\uc655
+                    \uccb4\ud06c\ud55c \ud56d\ubaa9\uc740 \ub204\uc801 \ud6c4\uc6d0 50\uac1c\ub2f9 1\uacf5\uc73c\ub85c \uacc4\uc0b0\ud569\ub2c8\ub2e4.
+
+                    \uac01 \ud56d\ubaa9\uacfc \ud558\ub2e8 \uc218\uc9d1\ud55c \uacf5 \uc601\uc5ed\uc758 \uc218\uc815 \ubc84\ud2bc\uc73c\ub85c \uac12\uc744 \uc218\ub3d9 \ud3b8\uc9d1\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.
+                    """;
+            case "nashiball" -> """
+                    [\ub098\uc2dc\ubcfc \uc124\uba85\uc11c]
+
+                    \uacf5 \uc218\uc9d1 \ud0ed\uc5d0 \uc800\uc7a5\ub41c \uac8c\uc784\uba85\uacfc \uacf5 \uac1c\uc218\ub85c \ud540\ubcfc \ucd94\ucca8\uc744 \uc9c4\ud589\ud569\ub2c8\ub2e4.
+
+                    1. \uc218\uc9d1\ud55c \uacf5 \ubd88\ub7ec\uc624\uae30\ub97c \ub204\ub985\ub2c8\ub2e4.
+                    2. \ud544\uc694\ud558\uba74 \ucc38\uac00 \ubaa9\ub85d\uc744 \uc218\uc815\ud569\ub2c8\ub2e4.
+                    3. \uc11e\uae30\ub85c \uc21c\uc11c\ub97c \uc11e\uc2b5\ub2c8\ub2e4.
+                    4. \uc2dc\uc791\uc744 \ub20c\ub7ec \ud540\ubcfc\uc744 \uc9c4\ud589\ud569\ub2c8\ub2e4.
+                    5. \ub2f9\ucca8 \uc21c\uc704\ub97c \ud655\uc778\ud569\ub2c8\ub2e4.
+
+                    \ud654\uba74\uc774 \uc815\uc0c1\uc801\uc73c\ub85c \ud45c\uc2dc\ub418\uc9c0 \uc54a\uc73c\uba74 \uc0c8\ub85c\uace0\uce68\uc744 \ub204\ub974\uc138\uc694.
+                    """;
+            case "timer" -> """
+                    [\ud0c0\uc774\uba38 \uc124\uba85\uc11c]
+
+                    \uc2dc, \ubd84, \ucd08\ub97c \uc9c1\uc811 \uc785\ub825\ud558\uac70\ub098 \uc6b0\uce21 \ud654\uc0b4\ud45c\ub85c 1\uc529 \uc870\uc815\ud569\ub2c8\ub2e4.
+
+                    - \uc2dc\uac04 \uc124\uc815: \uc785\ub825\ud55c \uc2dc\uac04\uc744 \uc0c1\ub2e8 \ud0c0\uc774\uba38\uc5d0 \uc801\uc6a9
+                    - \uc2dc\uc791: \uce74\uc6b4\ud2b8\ub2e4\uc6b4 \uc2dc\uc791
+                    - \uc77c\uc2dc\uc815\uc9c0/\uc774\uc5b4\uc11c \uc2dc\uc791: \ud604\uc7ac \uc2dc\uac04\uc5d0\uc11c \uc815\uc9c0 \ub610\ub294 \uc7ac\uac1c
+                    - \ucd08\uae30\ud654: \ud0c0\uc774\uba38\uc640 \ubaa8\ub4e0 \uc785\ub825\uce78\uc744 00:00:00\uc73c\ub85c \ucd08\uae30\ud654
+
+                    \ub2e4\ub978 \ud0ed\uc73c\ub85c \uc774\ub3d9\ud574\ub3c4 \ud0c0\uc774\uba38\ub294 \uacc4\uc18d \uc9c4\ud589\ub418\uba70 \uc18c\ub9ac\ub294 \uc7ac\uc0dd\ub418\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.
+                    """;
+            default -> """
+                    [\ubc29\uc140 \uc124\uba85\uc11c]
+
+                    \ud2b9\uc815 \ud6c4\uc6d0 \uc218\ub7c9\uc744 \ud488\ubaa9\uc73c\ub85c \ub4f1\ub85d\ud574 \uc218\uc9d1\ud558\ub294 \uae30\ub2a5\uc785\ub2c8\ub2e4.
+
+                    1. \uc218\uc9d1\ud560 \ud6c4\uc6d0 \uc885\ub958\ub97c \uc120\ud0dd\ud569\ub2c8\ub2e4.
+                    2. \ud6c4\uc6d0 \uc218\ub7c9\uacfc \ud488\ubaa9\uba85\uc744 \uc785\ub825\ud569\ub2c8\ub2e4.
+                    3. \uaddc\uce59 \ucd94\uac00\ub97c \ub204\ub985\ub2c8\ub2e4.
+
+                    \ub4f1\ub85d\ub41c \uc218\ub7c9\uacfc \uc815\ud655\ud788 \uac19\uc740 \ud6c4\uc6d0\ub9cc \uc218\uc9d1\ud569\ub2c8\ub2e4.
+                    \uc608: 100\uac1c/\uce58\ud0a8 \uaddc\uce59 \u2192 100\uac1c \ud6c4\uc6d0\uc744 \uce58\ud0a8\uc73c\ub85c \uc218\uc9d1
+
+                    \ud6c4\uc6d0\uc790\uac00 \ub2e4\uc74c \ucc44\ud305\uc744 \uc785\ub825\ud558\uba74 \ud6c4\uc6d0 \ud56d\ubaa9\uc5d0 \uba54\uc2dc\uc9c0\uac00 \ucd94\uac00\ub429\ub2c8\ub2e4.
+                    \uac19\uc740 \uc2dc\uccad\uc790\uc758 \ud6c4\uc6d0\uc740 \uae30\uc874 \ud56d\ubaa9\uc5d0 \ub204\uc801\ub429\ub2c8\ub2e4.
+
+                    \uba54\uc2dc\uc9c0 \uc218\uc815, \ud56d\ubaa9 \uc0ad\uc81c, \uac80\uc0c9, \ubc29\uc1a1\uad6d \uc774\ub3d9, \uc218\ub3d9 \ud14c\uc2a4\ud2b8\ub97c \uc0ac\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.
+                    """;
+        };
     }
 
     private JComponent roomTab() {
@@ -755,28 +896,75 @@ extends JFrame {
         donationSettings.setOpaque(false);
         donationSettings.setLayout(new BoxLayout(donationSettings, BoxLayout.Y_AXIS));
         donationSettings.setAlignmentX(0.0f);
-        JTextField unit = Main.smallField();
+        JToggleButton collectDonation = new JToggleButton(this.state.pinDonationEnabled ? "\ud6c4\uc6d0 \uc218\uc9d1 ON" : "\ud6c4\uc6d0 \uc218\uc9d1 OFF");
+        collectDonation.setSelected(this.state.pinDonationEnabled);
+        collectDonation.setAlignmentX(0.0f);
+        collectDonation.setPreferredSize(new Dimension(170, 38));
+        collectDonation.setMaximumSize(new Dimension(170, 38));
+        collectDonation.addActionListener(e -> {
+            this.state.pinDonationEnabled = collectDonation.isSelected();
+            collectDonation.setText(this.state.pinDonationEnabled ? "\ud6c4\uc6d0 \uc218\uc9d1 ON" : "\ud6c4\uc6d0 \uc218\uc9d1 OFF");
+            this.save();
+        });
+        donationSettings.add(Main.section("\ud6c4\uc6d0 \uc218\uc9d1"));
+        donationSettings.add(collectDonation);
+        donationSettings.add(Box.createVerticalStrut(14));
         donationSettings.add(Main.section("\uc218\uc9d1\ud560 \ud6c4\uc6d0"));
         this.addSourceSelectors(donationSettings, "pin");
         donationSettings.add(Box.createVerticalStrut(14));
-        unit.setText(this.state.pinballUnit > 0 ? String.valueOf(this.state.pinballUnit) : "");
-        JLabel current = new JLabel(this.pinText());
-        JButton saveRule = new JButton("\uaddc\uce59 \uc800\uc7a5");
-        saveRule.addActionListener(e -> this.integer(unit, v -> {
-            this.state.pinballUnit = v;
-            current.setText(this.pinText());
+        JTextField unit = Main.smallField();
+        DefaultListModel<String> ruleListModel = new DefaultListModel<String>();
+        JList<String> savedRules = new JList<String>(ruleListModel);
+        savedRules.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        savedRules.setVisibleRowCount(3);
+        Runnable refreshRules = () -> {
+            ruleListModel.clear();
+            for (int i = 0; i < this.state.pinballUnits.size(); ++i) {
+                ruleListModel.addElement((i + 1) + "\ubc88" + (i == 0 ? " (\uae30\ubcf8)" : "") + "  \u00b7  " + this.state.pinballUnits.get(i) + "\uac1c\ub2f9 \uacf5 1\uac1c");
+            }
+        };
+        JButton addRule = new JButton("\uaddc\uce59 \ucd94\uac00");
+        addRule.addActionListener(e -> this.integer(unit, value -> {
+            if (this.state.pinballUnits.size() >= 5) {
+                this.error("\uaddc\uce59\uc740 \ucd5c\ub300 5\uac1c\uae4c\uc9c0 \ub4f1\ub85d\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.");
+                return;
+            }
+            if (this.state.pinballUnits.contains(value)) {
+                this.error("\uc774\ubbf8 \ub4f1\ub85d\ub41c \uae30\uc900 \uc218\ub7c9\uc785\ub2c8\ub2e4.");
+                return;
+            }
+            this.state.pinballUnits.add(value);
+            refreshRules.run();
             this.save();
         }));
+        JButton deleteRule = new JButton("\uc120\ud0dd \uc0ad\uc81c");
+        deleteRule.addActionListener(e -> {
+            int selected = savedRules.getSelectedIndex();
+            if (selected >= 0 && selected < this.state.pinballUnits.size()) {
+                this.state.pinballUnits.remove(selected);
+                refreshRules.run();
+                this.save();
+            }
+        });
         GradientButton copyAll = new GradientButton("\uc218\uc9d1\ud55c \uacf5 \uc804\uccb4 \ubcf5\uc0ac");
         copyAll.setPreferredSize(new Dimension(210, 54));
         copyAll.addActionListener(e -> this.copyBallSummary());
-        donationSettings.add(Main.section("\uacf5 1\uac1c\uc758 \uae30\uc900 \uc218\ub7c9"));
-        donationSettings.add(Main.fieldRow(unit, saveRule));
-        donationSettings.add(Box.createVerticalStrut(12));
-        current.setForeground(ACCENT_DARK);
-        current.setAlignmentX(0.0f);
-        current.setMaximumSize(new Dimension(Integer.MAX_VALUE, current.getPreferredSize().height));
-        donationSettings.add(current);
+        JButton editAll = new JButton("\uc218\uc815");
+        editAll.setPreferredSize(new Dimension(82, 54));
+        editAll.addActionListener(e -> this.editBallSummary());
+        donationSettings.add(Main.section("\uacf5 1\uac1c\uc758 \uae30\uc900 \uc218\ub7c9 (\ucd5c\ub300 5\uac1c)"));
+        donationSettings.add(Main.fieldRow(unit, addRule));
+        donationSettings.add(Box.createVerticalStrut(8));
+        donationSettings.add(Main.section("\ub4f1\ub85d\ub41c \uaddc\uce59 \ubaa9\ub85d"));
+        JScrollPane savedRuleScroll = new JScrollPane(savedRules);
+        savedRuleScroll.setAlignmentX(0.0f);
+        savedRuleScroll.setPreferredSize(new Dimension(210, 76));
+        savedRuleScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 76));
+        donationSettings.add(savedRuleScroll);
+        donationSettings.add(Box.createVerticalStrut(6));
+        deleteRule.setAlignmentX(0.0f);
+        donationSettings.add(deleteRule);
+        refreshRules.run();
 
         JPanel chatSettings = new JPanel();
         chatSettings.setOpaque(false);
@@ -845,8 +1033,20 @@ extends JFrame {
         RoundedPanel bottom = new RoundedPanel(new BorderLayout(18, 0));
         bottom.setBorder(new EmptyBorder(18, 24, 18, 24));
         bottom.add((Component)this.ballSummary, "Center");
-        bottom.add((Component)copyAll, "East");
-        return Main.dashboard(top, this.collectionArea(this.pinList, "pin"), bottom);
+        JPanel bottomActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        bottomActions.setOpaque(false);
+        bottomActions.add(editAll);
+        bottomActions.add(copyAll);
+        bottom.add((Component)bottomActions, "East");
+        Dimension settingsContentSize = top.getLayout().preferredLayoutSize(top);
+        top.setPreferredSize(new Dimension(300, settingsContentSize.height));
+        JScrollPane settingsScroll = new JScrollPane(top, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        settingsScroll.setBorder(null);
+        settingsScroll.setOpaque(false);
+        settingsScroll.getViewport().setOpaque(false);
+        settingsScroll.getVerticalScrollBar().setUnitIncrement(18);
+        settingsScroll.setPreferredSize(new Dimension(top.getPreferredSize().width + 14, 10));
+        return Main.dashboard(settingsScroll, this.collectionArea(this.pinList, "pin"), bottom);
     }
 
     private JComponent nashiBallTab() {
@@ -862,6 +1062,249 @@ extends JFrame {
             unavailable.add(message, BorderLayout.CENTER);
             return unavailable;
         }
+    }
+
+    private JComponent timerTab() {
+        JPanel page = Main.page();
+        page.setBorder(new EmptyBorder(34, 70, 50, 70));
+        RoundedPanel card = new RoundedPanel(new BorderLayout(0, 26));
+        card.setBorder(new EmptyBorder(38, 48, 42, 48));
+
+        JPanel heading = new JPanel();
+        heading.setOpaque(false);
+        heading.setLayout(new BoxLayout(heading, BoxLayout.Y_AXIS));
+        JLabel tag = new JLabel("COUNTDOWN TIMER");
+        tag.setForeground(ACCENT);
+        tag.setFont(tag.getFont().deriveFont(Font.BOLD, 11.0f));
+        tag.setAlignmentX(0.5f);
+        JLabel title = new JLabel("\ud0c0\uc774\uba38");
+        title.setForeground(TEXT);
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 26.0f));
+        title.setAlignmentX(0.5f);
+        JLabel description = new JLabel("\uc2dc\uac04\uc744 \uc9c1\uc811 \uc124\uc815\ud558\uace0 \uce74\uc6b4\ud2b8\ub2e4\uc6b4\uc744 \uc2dc\uc791\ud558\uc138\uc694");
+        description.setForeground(MUTED);
+        description.setAlignmentX(0.5f);
+        heading.add(tag);
+        heading.add(Box.createVerticalStrut(6));
+        heading.add(title);
+        heading.add(Box.createVerticalStrut(8));
+        heading.add(description);
+        card.add(heading, BorderLayout.NORTH);
+
+        JPanel center = new JPanel();
+        center.setOpaque(false);
+        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
+        JLabel clock = new JLabel(Main.timerText(this.state.timerSeconds));
+        clock.setForeground(TEXT);
+        clock.setFont(new Font(Font.MONOSPACED, Font.BOLD, 72));
+        JPanel clockWrap = Main.timerSurface(new FlowLayout(FlowLayout.CENTER, 34, 20), new Color(255, 241, 229));
+        clockWrap.setAlignmentX(0.5f);
+        clockWrap.setPreferredSize(new Dimension(620, 132));
+        clockWrap.setMaximumSize(new Dimension(620, 132));
+        clockWrap.add(clock);
+        center.add(clockWrap);
+        center.add(Box.createVerticalStrut(14));
+        JLabel timerStatus = new JLabel("\uc900\ube44\ub428");
+        timerStatus.setForeground(ACCENT_DARK);
+        timerStatus.setFont(timerStatus.getFont().deriveFont(Font.BOLD, 13.0f));
+        timerStatus.setAlignmentX(0.5f);
+        center.add(timerStatus);
+        center.add(Box.createVerticalStrut(24));
+
+        JPanel inputs = new JPanel(new GridLayout(1, 3, 12, 0));
+        inputs.setOpaque(false);
+        inputs.setAlignmentX(0.5f);
+        inputs.setPreferredSize(new Dimension(540, 60));
+        inputs.setMaximumSize(new Dimension(540, 60));
+        JSpinner hours = Main.timerSpinner(this.state.timerSeconds / 3600L, null);
+        JSpinner minutes = Main.timerSpinner(this.state.timerSeconds % 3600L / 60L, 59L);
+        JSpinner seconds = Main.timerSpinner(this.state.timerSeconds % 60L, 59L);
+        inputs.add(Main.timerInput(hours, "\uc2dc"));
+        inputs.add(Main.timerInput(minutes, "\ubd84"));
+        inputs.add(Main.timerInput(seconds, "\ucd08"));
+        center.add(inputs);
+        center.add(Box.createVerticalStrut(20));
+
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
+        actions.setOpaque(false);
+        JButton apply = new JButton("\uc2dc\uac04 \uc124\uc815");
+        JToggleButton start = new JToggleButton("\uc2dc\uc791");
+        JButton reset = new JButton("\ucd08\uae30\ud654");
+        apply.setBackground(new Color(255, 235, 216));
+        apply.setForeground(ACCENT_DARK);
+        start.setBackground(ACCENT);
+        start.setForeground(Color.WHITE);
+        start.setFont(start.getFont().deriveFont(Font.BOLD));
+        reset.setBackground(new Color(248, 245, 242));
+        start.setPreferredSize(new Dimension(110, 42));
+        long[] remaining = {this.state.timerSeconds};
+        Timer countdown = new Timer(1000, null);
+        countdown.addActionListener(e -> {
+            if (remaining[0] > 0) {
+                --remaining[0];
+                clock.setText(Main.timerText(remaining[0]));
+            }
+            if (remaining[0] <= 0) {
+                countdown.stop();
+                start.setSelected(false);
+                start.setText("\uc2dc\uc791");
+                clock.setForeground(ACCENT_DARK);
+                timerStatus.setText("\uc2dc\uac04 \uc885\ub8cc");
+            }
+        });
+        apply.addActionListener(e -> {
+            try {
+                hours.commitEdit();
+                minutes.commitEdit();
+                seconds.commitEdit();
+                long h = ((Number)hours.getValue()).longValue();
+                long m = ((Number)minutes.getValue()).longValue();
+                long s = ((Number)seconds.getValue()).longValue();
+                if (h < 0 || m < 0 || m > 59 || s < 0 || s > 59 || (h == 0 && m == 0 && s == 0)) {
+                    throw new IllegalArgumentException();
+                }
+                if (h > (Long.MAX_VALUE - m * 60L - s) / 3600L) {
+                    throw new IllegalArgumentException();
+                }
+                long total = h * 3600L + m * 60L + s;
+                countdown.stop();
+                start.setSelected(false);
+                start.setText("\uc2dc\uc791");
+                this.state.timerSeconds = total;
+                remaining[0] = this.state.timerSeconds;
+                clock.setText(Main.timerText(remaining[0]));
+                clock.setForeground(TEXT);
+                timerStatus.setText("\uc124\uc815 \uc644\ub8cc");
+                this.save();
+            }
+            catch (Exception ex) {
+                this.error("\uc2dc\uac04\uc740 0 \uc774\uc0c1, \ubd84\uacfc \ucd08\ub294 0~59\ub85c \uc785\ub825\ud558\uc138\uc694.");
+            }
+        });
+        start.addActionListener(e -> {
+            if (start.isSelected()) {
+                if (remaining[0] <= 0) {
+                    remaining[0] = this.state.timerSeconds;
+                }
+                if (remaining[0] <= 0) {
+                    start.setSelected(false);
+                    this.error("\uba3c\uc800 \ud0c0\uc774\uba38 \uc2dc\uac04\uc744 \uc124\uc815\ud558\uc138\uc694.");
+                    return;
+                }
+                clock.setForeground(TEXT);
+                start.setText("\uc77c\uc2dc\uc815\uc9c0");
+                timerStatus.setText("\uce74\uc6b4\ud2b8\ub2e4\uc6b4 \uc911");
+                countdown.start();
+            } else {
+                countdown.stop();
+                start.setText("\uc774\uc5b4\uc11c \uc2dc\uc791");
+                timerStatus.setText("\uc77c\uc2dc\uc815\uc9c0\ub428");
+            }
+        });
+        reset.addActionListener(e -> {
+            countdown.stop();
+            start.setSelected(false);
+            start.setText("\uc2dc\uc791");
+            this.state.timerSeconds = 0;
+            remaining[0] = 0;
+            hours.setValue(0);
+            minutes.setValue(0);
+            seconds.setValue(0);
+            clock.setText(Main.timerText(remaining[0]));
+            clock.setForeground(TEXT);
+            timerStatus.setText("\ucd08\uae30\ud654\ub428");
+            this.save();
+        });
+        actions.add(apply);
+        actions.add(start);
+        actions.add(reset);
+        center.add(actions);
+        card.add(center, BorderLayout.CENTER);
+        page.add(card, BorderLayout.CENTER);
+        return page;
+    }
+
+    private static JSpinner timerSpinner(long value, Long maximum) {
+        long normalized = Math.max(0L, maximum == null ? value : Math.min(maximum, value));
+        JSpinner spinner = new JSpinner(new SpinnerNumberModel(Long.valueOf(normalized), Long.valueOf(0L), maximum, Long.valueOf(1L)));
+        spinner.setEditor(new JSpinner.NumberEditor(spinner, maximum == null ? "0" : "00"));
+        JFormattedTextField editor = ((JSpinner.DefaultEditor)spinner.getEditor()).getTextField();
+        editor.setHorizontalAlignment(JTextField.CENTER);
+        editor.setFont(editor.getFont().deriveFont(Font.BOLD, 17.0f));
+        ((AbstractDocument)editor.getDocument()).setDocumentFilter(new DocumentFilter() {
+            private boolean allowed(FilterBypass fb, int offset, int length, String text) throws BadLocationException {
+                String current = fb.getDocument().getText(0, fb.getDocument().getLength());
+                String next = current.substring(0, offset) + (text == null ? "" : text) + current.substring(offset + length);
+                if (next.isEmpty() || !next.matches("\\d+")) {
+                    return next.isEmpty();
+                }
+                if (maximum == null) {
+                    try {
+                        Long.parseLong(next);
+                        return true;
+                    }
+                    catch (NumberFormatException ex) {
+                        return false;
+                    }
+                }
+                return next.length() <= 2 && Long.parseLong(next) <= maximum;
+            }
+
+            @Override
+            public void insertString(FilterBypass fb, int offset, String string, AttributeSet attr) throws BadLocationException {
+                if (this.allowed(fb, offset, 0, string)) {
+                    super.insertString(fb, offset, string, attr);
+                }
+            }
+
+            @Override
+            public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attrs) throws BadLocationException {
+                if (this.allowed(fb, offset, length, text)) {
+                    super.replace(fb, offset, length, text, attrs);
+                }
+            }
+        });
+        spinner.setPreferredSize(new Dimension(112, 40));
+        spinner.setMinimumSize(new Dimension(112, 40));
+        spinner.setMaximumSize(new Dimension(112, 40));
+        return spinner;
+    }
+
+    private static JPanel timerInput(JComponent field, String unit) {
+        JPanel panel = Main.timerSurface(new BorderLayout(8, 0), new Color(255, 247, 240));
+        panel.setBorder(new EmptyBorder(9, 12, 9, 12));
+        panel.setPreferredSize(new Dimension(172, 60));
+        JLabel label = new JLabel(unit);
+        label.setForeground(ACCENT_DARK);
+        label.setFont(label.getFont().deriveFont(Font.BOLD, 15.0f));
+        label.setHorizontalAlignment(JLabel.CENTER);
+        label.setPreferredSize(new Dimension(24, 40));
+        panel.add(field, BorderLayout.CENTER);
+        panel.add(label, BorderLayout.EAST);
+        return panel;
+    }
+
+    private static JPanel timerSurface(LayoutManager layout, Color fill) {
+        JPanel panel = new JPanel(layout) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D x = (Graphics2D)g.create();
+                x.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                x.setColor(fill);
+                x.fillRoundRect(0, 0, getWidth(), getHeight(), 24, 24);
+                x.setColor(new Color(255, 205, 169));
+                x.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 24, 24);
+                x.dispose();
+                super.paintComponent(g);
+            }
+        };
+        panel.setOpaque(false);
+        return panel;
+    }
+
+    static String timerText(long totalSeconds) {
+        long safe = Math.max(0L, totalSeconds);
+        return String.format(Locale.ROOT, "%02d:%02d:%02d", safe / 3600, safe % 3600 / 60, safe % 60);
     }
 
     private String nashiBallEntries() {
@@ -1091,7 +1534,114 @@ extends JFrame {
 
     private void renderPinListRow(int i, int index, PinRow r) {
         String detail = r.amount > 0 ? r.source + " \u00b7 \ud6c4\uc6d0 " + r.amount + "\uac1c" : r.source;
-        this.pinList.add(this.entryRow(i + 1, Main.safe(r.game), Main.safe(r.nick) + " \u00b7 " + r.id, detail, r.balls + "\uacf5", r.id, null, () -> this.deleteEntry("pin", index), true));
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        controls.setOpaque(false);
+        JCheckBox challenge = new JCheckBox("\uacf5\uac9c/\ucf20\uc655", r.challengeMode);
+        challenge.setOpaque(false);
+        challenge.addActionListener(e -> {
+            r.challengeMode = challenge.isSelected();
+            r.balls = r.challengeMode ? Main.challengeBalls(r.amount) : r.standardBalls;
+            this.rebuildGameBalls();
+            this.refreshBallSummary();
+            this.save();
+            this.renderPinList();
+        });
+        JButton edit = new JButton("\uc218\uc815");
+        Main.styleButton(edit);
+        edit.addActionListener(e -> this.editPinRow(r));
+        controls.add(challenge);
+        controls.add(edit);
+        this.pinList.add(this.entryRow(i + 1, Main.safe(r.game), Main.safe(r.nick) + " \u00b7 " + r.id, detail, r.balls + "\uacf5", r.id, controls, () -> this.deleteEntry("pin", index), true));
+    }
+
+    private void editPinRow(PinRow row) {
+        JTextField game = new JTextField(Main.safe(row.game), 18);
+        JTextField nick = new JTextField(row.nick, 18);
+        JTextField id = new JTextField(row.id, 18);
+        JTextField source = new JTextField(row.source, 18);
+        JTextField amount = new JTextField(String.valueOf(row.amount), 18);
+        JTextField balls = new JTextField(String.valueOf(row.balls), 18);
+        Object[] fields = {"\uac8c\uc784\uba85", game, "\ub2c9\ub124\uc784", nick, "\uc544\uc774\ub514", id, "\ud6c4\uc6d0 \uc885\ub958", source, "\ud6c4\uc6d0\uc218", amount, "\uacf5 \uac1c\uc218", balls};
+        if (JOptionPane.showConfirmDialog(this, fields, "\uc218\uc9d1\ud55c \uacf5 \uc218\uc815", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        try {
+            int editedAmount = Integer.parseInt(amount.getText().trim());
+            int editedBalls = Integer.parseInt(balls.getText().trim());
+            if (editedAmount < 0 || editedBalls < 0 || id.getText().trim().isEmpty()) {
+                throw new IllegalArgumentException();
+            }
+            row.game = game.getText().trim();
+            row.nick = nick.getText().trim();
+            row.id = id.getText().trim();
+            row.source = source.getText().trim();
+            row.amount = editedAmount;
+            row.balls = editedBalls;
+            row.standardBalls = editedBalls;
+            row.challengeMode = false;
+            this.rebuildGameBalls();
+            this.rebuildModels();
+            this.refreshBallSummary();
+            this.save();
+            this.refreshCollectionLists();
+        }
+        catch (Exception e) {
+            this.error("\ud6c4\uc6d0\uc218\uc640 \uacf5 \uac1c\uc218\ub294 0 \uc774\uc0c1\uc758 \uc815\uc218\ub85c, \uc544\uc774\ub514\ub294 \ube48\uce78\uc774 \uc544\ub2c8\uac8c \uc785\ub825\ud558\uc138\uc694.");
+        }
+    }
+
+    private void editBallSummary() {
+        String initial = this.state.gameBalls.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .map(entry -> entry.getKey() + "*" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining("\n"));
+        JTextArea editor = new JTextArea(initial, 12, 30);
+        editor.setLineWrap(true);
+        editor.setWrapStyleWord(true);
+        JScrollPane scroll = new JScrollPane(editor);
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        panel.add(new JLabel("\ud55c \uc904\uc5d0 \ud558\ub098\uc529  \uac8c\uc784\uba85*\uacf5\uac1c\uc218  \ud615\uc2dd\uc73c\ub85c \uc785\ub825\ud558\uc138\uc694."), BorderLayout.NORTH);
+        panel.add(scroll, BorderLayout.CENTER);
+        if (JOptionPane.showConfirmDialog(this, panel, "\uc218\uc9d1\ud55c \uacf5 \uc218\uc815", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) {
+            return;
+        }
+        try {
+            LinkedHashMap<String, Integer> edited = new LinkedHashMap<String, Integer>();
+            for (String raw : editor.getText().split("[\\r\\n,]+")) {
+                String line = raw.trim();
+                if (line.isEmpty()) {
+                    continue;
+                }
+                int separator = line.lastIndexOf('*');
+                if (separator <= 0 || separator == line.length() - 1) {
+                    throw new IllegalArgumentException();
+                }
+                String game = line.substring(0, separator).trim();
+                int count = Integer.parseInt(line.substring(separator + 1).trim());
+                if (game.isEmpty() || count < 0 || edited.containsKey(game)) {
+                    throw new IllegalArgumentException();
+                }
+                if (count > 0) {
+                    edited.put(game, count);
+                }
+            }
+            Map<String, Integer> base = this.pinRowBallCounts();
+            this.state.gameBallAdjustments.clear();
+            LinkedHashSet<String> names = new LinkedHashSet<String>();
+            names.addAll(base.keySet());
+            names.addAll(edited.keySet());
+            for (String name : names) {
+                int difference = edited.getOrDefault(name, 0) - base.getOrDefault(name, 0);
+                if (difference != 0) {
+                    this.state.gameBallAdjustments.put(name, difference);
+                }
+            }
+            this.rebuildGameBalls();
+            this.refreshBallSummary();
+            this.save();
+        }
+        catch (Exception e) {
+            this.error("\uac8c\uc784\uba85*\uacf5\uac1c\uc218 \ud615\uc2dd\uc73c\ub85c \uc785\ub825\ud558\uace0, \uc911\ubcf5 \uac8c\uc784\uba85\uc740 \ud558\ub098\ub85c \ud569\uccd0 \uc8fc\uc138\uc694.");
+        }
     }
 
     private JComponent donorEntryRow(String nick, String id, String message, String donationInfo, Consumer<String> messageUpdate, String stationId, Runnable remove) {
@@ -1245,16 +1795,16 @@ extends JFrame {
         row.add((Component)words, "Center");
         JPanel buttons = new JPanel(new FlowLayout(2, 7, 9));
         buttons.setOpaque(false);
-        if (metric != null) {
-            SoftBadge badge = new SoftBadge(metric, new Color(242, 237, 255), new Color(105, 82, 178));
-            buttons.add(badge);
-        }
         if (extra != null) {
             if (extra instanceof JTextField) {
                 JTextField f = (JTextField)extra;
                 Main.styleInput(f);
             }
             buttons.add(extra);
+        }
+        if (metric != null) {
+            SoftBadge badge = new SoftBadge(metric, new Color(242, 237, 255), new Color(105, 82, 178));
+            buttons.add(badge);
         }
         JButton station = new JButton("\ubc29\uc1a1\uad6d");
         station.setBackground(new Color(255, 235, 216));
@@ -1322,6 +1872,7 @@ extends JFrame {
         } else {
             this.state.pinRows.clear();
             this.state.gameBalls.clear();
+            this.state.gameBallAdjustments.clear();
             this.refreshBallSummary();
         }
         this.rebuildModels();
@@ -1338,9 +1889,17 @@ extends JFrame {
 
     private void rebuildGameBalls() {
         this.state.gameBalls.clear();
+        this.state.gameBalls.putAll(this.pinRowBallCounts());
+        this.state.gameBallAdjustments.forEach((game, adjustment) -> this.state.gameBalls.merge(game, adjustment, Integer::sum));
+        this.state.gameBalls.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= 0);
+    }
+
+    private Map<String, Integer> pinRowBallCounts() {
+        LinkedHashMap<String, Integer> counts = new LinkedHashMap<String, Integer>();
         for (PinRow row : this.state.pinRows) {
-            this.state.gameBalls.merge(Main.safe(row.game), row.balls, Integer::sum);
+            counts.merge(Main.safe(row.game), row.balls, Integer::sum);
         }
+        return counts;
     }
 
     private static String safe(String value) {
@@ -1693,8 +2252,9 @@ extends JFrame {
         if (this.state.rouletteEnabled && this.sourceEnabled("room", source) && (trigger = (RouletteTrigger)this.state.rouletteTriggers.stream().filter(candidate -> candidate.amount == amount).findFirst().orElse(null)) != null) {
             rouletteCollected = this.queueRoulette(nick, id, source, amount, trigger.spins, true, donationToken).collected();
         }
-        if (this.sourceEnabled("reverse", source)) {
-            this.state.reverseRules.stream().filter(r -> amount >= r.minimum).max(Comparator.comparingInt(r -> r.minimum)).ifPresent(r -> {
+        ReverseRule matchedReverseRule = this.sourceEnabled("reverse", source) ? Main.matchingReverseRule(amount, this.state.reverseRules) : null;
+        if (matchedReverseRule != null) {
+            ReverseRule r = matchedReverseRule;
                 int i = Main.indexById(this.state.reverseRows, id);
                 int calc = (int)Math.floor((double)amount * r.percent / 100.0);
                 if (i < 0) {
@@ -1712,18 +2272,17 @@ extends JFrame {
                     Main.replaceRow(this.reverseModel, i, row.values());
                 }
                 this.save();
-            });
         }
         List<Pending> p = this.pending.computeIfAbsent(id, k -> new ArrayList<Pending>());
-        boolean bl = reverseMatched = this.sourceEnabled("reverse", source) && this.state.reverseRules.stream().anyMatch(r -> amount >= r.minimum);
+        boolean bl = reverseMatched = matchedReverseRule != null;
         if (reverseMatched) {
             p.add(new Pending("reverse", source, now, nick, id, amount, 0, "", System.currentTimeMillis(), 0L, false));
         }
-        if (this.sourceEnabled("room", source) && this.state.roomRules.contains(amount)) {
+        if (Main.shouldCollectRoomDonation(this.sourceEnabled("room", source), amount, this.state.roomRules)) {
             p.add(new Pending("room", source, now, nick, id, amount, 1, amount + " " + this.state.roomRuleNames.getOrDefault(amount, "\ud488\ubaa9 \ubbf8\uc9c0\uc815"), System.currentTimeMillis(), rouletteCollected ? donationToken : 0L, rouletteCollected));
         }
-        int balls = RuleEngine.pinballBalls(amount, this.state.pinballUnit);
-        if (this.sourceEnabled("pin", source) && balls > 0) {
+        int balls = Main.pinballBalls(amount, this.state.pinballUnits);
+        if (Main.shouldCollectPinDonation(this.state.pinDonationEnabled, this.sourceEnabled("pin", source), balls)) {
             p.add(new Pending("pin", source, now, nick, id, amount, balls, "", System.currentTimeMillis(), 0L, false));
         }
         p.removeIf(x -> System.currentTimeMillis() - x.created > 120000L);
@@ -1868,7 +2427,11 @@ extends JFrame {
 
     private void chatMessage(String id, String nickname, String message, ChatViewerType viewerType) {
         boolean pinDonationCollected = this.nextChat(id, message);
-        if (this.state.pinChatEnabled && !pinDonationCollected && this.chatViewerTypeEnabled(viewerType)) {
+        int existingIndex = Main.indexById(this.state.pinRows, id);
+        boolean alreadyCollectedChat = existingIndex >= 0
+                && Main.messageParts(this.state.pinRows.get(existingIndex).source).contains("\uc77c\ubc18 \ucc44\ud305");
+        if (Main.shouldCollectPinChat(this.state.pinChatEnabled, pinDonationCollected,
+                this.chatViewerTypeEnabled(viewerType), this.state.pinChatDuplicateEnabled, alreadyCollectedChat)) {
             this.collectPinChat(id, nickname, message);
         }
     }
@@ -1929,13 +2492,16 @@ extends JFrame {
                 ((PinRow)row).source = Main.mergeMessage(((PinRow)row).source, p.source);
                 ((PinRow)row).nick = p.nick;
                 ((PinRow)row).amount += p.amount;
-                ((PinRow)row).balls += p.balls;
+                ((PinRow)row).standardBalls += p.balls;
+                ((PinRow)row).balls = ((PinRow)row).challengeMode
+                        ? Main.challengeBalls(((PinRow)row).amount)
+                        : ((PinRow)row).standardBalls;
                 ((PinRow)row).game = Main.mergeMessage(((PinRow)row).game, message);
                 Main.replaceRow(this.pinModel, i, ((PinRow)row).values());
             }
-            this.state.gameBalls.merge(message.isBlank() ? "\ubbf8\uc785\ub825" : message.trim(), p.balls, Integer::sum);
-            this.refreshBallSummary();
         }
+        this.rebuildGameBalls();
+        this.refreshBallSummary();
         this.save();
         this.refreshCollectionLists();
         return pinCollected;
@@ -1948,10 +2514,6 @@ extends JFrame {
         String now = TIME.format(LocalDateTime.now());
         String collectedName = nickname == null || nickname.isBlank() ? id : nickname.trim();
         int index = Main.indexById(this.state.pinRows, id);
-        if (!this.state.pinChatDuplicateEnabled && index >= 0
-                && Main.messageParts(this.state.pinRows.get(index).source).contains("\uc77c\ubc18 \ucc44\ud305")) {
-            return;
-        }
         if (index < 0) {
             PinRow row = new PinRow(now, "\uc77c\ubc18 \ucc44\ud305", collectedName, id, 0, collectedName, 1);
             this.state.pinRows.add(row);
@@ -1963,11 +2525,12 @@ extends JFrame {
             if (nickname != null && !nickname.isBlank()) {
                 row.nick = nickname;
             }
-            row.balls += 1;
+            row.standardBalls += 1;
+            row.balls = row.challengeMode ? Main.challengeBalls(row.amount) : row.standardBalls;
             row.game = Main.mergeMessage(row.game, collectedName);
             Main.replaceRow(this.pinModel, index, row.values());
         }
-        this.state.gameBalls.merge(collectedName, 1, Integer::sum);
+        this.rebuildGameBalls();
         this.refreshBallSummary();
         this.save();
         this.refreshCollectionLists();
@@ -2062,6 +2625,9 @@ extends JFrame {
             if (r.source == null) {
                 r.source = "\ubcc4\ud48d\uc120";
             }
+            if (r.standardBalls == null) {
+                r.standardBalls = r.balls;
+            }
             if ((x = (PinRow)linkedHashMap.get(r.id)) == null) {
                 linkedHashMap.put(r.id, r);
                 continue;
@@ -2070,7 +2636,9 @@ extends JFrame {
             x.source = Main.mergeMessage(x.source, r.source);
             x.nick = r.nick;
             x.amount += r.amount;
-            x.balls += r.balls;
+            x.standardBalls += r.standardBalls;
+            x.challengeMode = x.challengeMode || r.challengeMode;
+            x.balls = x.challengeMode ? Main.challengeBalls(x.amount) : x.standardBalls;
             x.game = Main.mergeMessage(x.game, r.game);
         }
         this.state.pinRows = new ArrayList(linkedHashMap.values());
@@ -2219,6 +2787,7 @@ extends JFrame {
         } else {
             this.state.pinRows.clear();
             this.state.gameBalls.clear();
+            this.state.gameBallAdjustments.clear();
             this.refreshBallSummary();
         }
         this.save();
@@ -2601,8 +3170,52 @@ extends JFrame {
         JOptionPane.showMessageDialog(this, s, "\uc54c\ub9bc", 2);
     }
 
+    static int pinballBalls(int amount, List<Integer> units) {
+        if (units != null) {
+            for (Integer unit : units) {
+                if (unit != null) {
+                    int balls = RuleEngine.pinballBalls(amount, unit);
+                    if (balls > 0) {
+                        return balls;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    static boolean shouldCollectPinDonation(boolean collectionEnabled, boolean sourceEnabled, int balls) {
+        return collectionEnabled && sourceEnabled && balls > 0;
+    }
+
+    static boolean shouldCollectPinChat(boolean collectionEnabled, boolean donationChatConsumed,
+            boolean viewerTypeEnabled, boolean duplicateEnabled, boolean alreadyCollectedChat) {
+        return collectionEnabled && !donationChatConsumed && viewerTypeEnabled
+                && (duplicateEnabled || !alreadyCollectedChat);
+    }
+
+    static int challengeBalls(int amount) {
+        return amount > 0 ? amount / 50 : 0;
+    }
+
+    static boolean shouldCollectRoomDonation(boolean sourceEnabled, int amount, List<Integer> rules) {
+        return sourceEnabled && rules != null && rules.contains(amount);
+    }
+
+    static ReverseRule matchingReverseRule(int amount, List<ReverseRule> rules) {
+        if (rules == null) {
+            return null;
+        }
+        return rules.stream().filter(rule -> amount >= rule.minimum)
+                .max(Comparator.comparingInt(rule -> rule.minimum)).orElse(null);
+    }
+
     private String pinText() {
-        return this.state.pinballUnit > 0 ? this.state.pinballUnit + "\uac1c\ub2f9 \uacf5 1\uac1c (\uc815\ud655\ud55c \ubc30\uc218\ub9cc \uc218\uc9d1)" : "\uaddc\uce59 \uc5c6\uc74c";
+        if (this.state.pinballUnits.isEmpty()) {
+            return "\uaddc\uce59 \uc5c6\uc74c";
+        }
+        return "\ub4f1\ub85d \uaddc\uce59 " + this.state.pinballUnits.size() + "/5: "
+                + this.state.pinballUnits.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", "));
     }
 
     private static String trim(double d) {
@@ -2640,6 +3253,7 @@ extends JFrame {
         Map<Integer, String> roomRuleNames = new LinkedHashMap<Integer, String>();
         List<ReverseRule> reverseRules = new ArrayList<ReverseRule>();
         int pinballUnit = 0;
+        List<Integer> pinballUnits = new ArrayList<Integer>();
         boolean roomStar = true;
         boolean roomAd = true;
         boolean roomChallenge = true;
@@ -2649,6 +3263,7 @@ extends JFrame {
         boolean pinStar = true;
         boolean pinAd = true;
         boolean pinChallenge = true;
+        boolean pinDonationEnabled = true;
         boolean pinChatEnabled = false;
         boolean pinChatDuplicateEnabled = false;
         boolean pinChatNormal = true;
@@ -2664,6 +3279,8 @@ extends JFrame {
         List<ReverseRow> reverseRows = new ArrayList<ReverseRow>();
         List<PinRow> pinRows = new ArrayList<PinRow>();
         Map<String, Integer> gameBalls = new LinkedHashMap<String, Integer>();
+        Map<String, Integer> gameBallAdjustments = new LinkedHashMap<String, Integer>();
+        long timerSeconds = 0L;
 
         State() {
         }
@@ -2681,6 +3298,15 @@ extends JFrame {
             if (this.reverseRules == null) {
                 this.reverseRules = new ArrayList<ReverseRule>();
             }
+            if (this.pinballUnits == null) {
+                this.pinballUnits = new ArrayList<Integer>();
+            }
+            if (this.pinballUnits.isEmpty() && this.pinballUnit > 0) {
+                this.pinballUnits.add(this.pinballUnit);
+            }
+            this.pinballUnits.removeIf(unit -> unit == null || unit <= 0);
+            this.pinballUnits = this.pinballUnits.stream().distinct().limit(5L).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+            this.pinballUnit = 0;
             if (this.rouletteRules == null) {
                 this.rouletteRules = new ArrayList<RouletteRule>();
             }
@@ -2709,8 +3335,19 @@ extends JFrame {
             if (this.pinRows == null) {
                 this.pinRows = new ArrayList<PinRow>();
             }
+            for (PinRow row : this.pinRows) {
+                if (row.standardBalls == null) {
+                    row.standardBalls = row.balls;
+                }
+                if (row.challengeMode) {
+                    row.balls = Main.challengeBalls(row.amount);
+                }
+            }
             if (this.gameBalls == null) {
                 this.gameBalls = new LinkedHashMap<String, Integer>();
+            }
+            if (this.gameBallAdjustments == null) {
+                this.gameBallAdjustments = new LinkedHashMap<String, Integer>();
             }
             if (this.streamerId == null) {
                 this.streamerId = "";
@@ -2937,6 +3574,8 @@ extends JFrame {
         int amount;
         String game;
         int balls;
+        Integer standardBalls;
+        boolean challengeMode;
 
         PinRow(String t, String s, String n, String i, int a, String g, int b) {
             this.time = t;
@@ -2946,6 +3585,7 @@ extends JFrame {
             this.amount = a;
             this.game = g;
             this.balls = b;
+            this.standardBalls = b;
         }
 
         Object[] values() {
